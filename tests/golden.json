@@ -1,0 +1,276 @@
+[
+  {
+    "receipt_number": "293",
+    "date": "2026-09-24",
+    "time": "12:23pm",
+    "merchant": "QUICK MART LTD.",
+    "branch": "PIONEER BRANCH",
+    "customer_name": "CATHERINE",
+    "cashier": "SERENOI J KOIKAI",
+    "payment_method": "M-PESA",
+    "total": 75.81,
+    "subtotal_pre_vat": 65.35,
+    "vat_total": 10.46,
+    "discount_total": null,
+    "items": [
+      {
+        "name": "FR-FRESH PACKED SWEET POTATO PER KG",
+        "item_code": "730087",
+        "quantity": 0.19,
+        "unit": "KG",
+        "unit_price": 399.0,
+        "line_total": 75.81,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      }
+    ],
+    "notes": "M-Pesa paid 76.00, change 0.19"
+  },
+  {
+    "receipt_number": "133",
+    "date": "2026-09-21",
+    "time": "09:18am",
+    "merchant": "QUICK MART LTD.",
+    "total": 91.0,
+    "subtotal_pre_vat": 86.17,
+    "vat_total": 4.83,
+    "discount_total": null,
+    "items": [
+      {
+        "name": "FR-FRESH PUMPKIN CHAPATI PER PC",
+        "item_code": "730014",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 35.0,
+        "line_total": 35.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      },
+      {
+        "name": "FR-FRESH BUDGET BREAD WHITE(400GM)",
+        "item_code": "0013.12.02",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 56.0,
+        "line_total": 56.0,
+        "vat_code": "A",
+        "discount": null,
+        "struck_through": false
+      }
+    ],
+    "notes": "two VAT codes: G (16%) and A (0%)"
+  },
+  {
+    "receipt_number": "368",
+    "date": "2026-09-22",
+    "time": "02:06pm",
+    "merchant": "QUICK MART LTD.",
+    "customer_name": "CATHERINE",
+    "cashier": "ESTER W MUTUKU",
+    "payment_method": "M-PESA",
+    "total": 70.0,
+    "subtotal_pre_vat": 60.34,
+    "vat_total": 9.66,
+    "discount_total": null,
+    "items": [
+      {
+        "name": "FR-FRESH BROWN CHAPATI PER PC",
+        "item_code": "730096",
+        "quantity": 2.0,
+        "unit": "PC",
+        "unit_price": 35.0,
+        "line_total": 70.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      }
+    ],
+    "notes": "Brown chapati 2 PC"
+  },
+  {
+    "receipt_number": "182",
+    "date": "2026-09-30",
+    "time": "09:24am",
+    "merchant": "QUICK MART LTD.",
+    "customer_name": "CATHERINE",
+    "cashier": "SAMUEL T NJOHIGU",
+    "payment_method": "M-PESA",
+    "total": 208.0,
+    "subtotal_pre_vat": 179.31,
+    "vat_total": 28.69,
+    "discount_total": 19.0,
+    "items": [
+      {
+        "name": "HH- TECHPAK 25GLASS CLEAR 200ML",
+        "item_code": "210423",
+        "quantity": 1.0,
+        "unit": "PA",
+        "unit_price": 50.0,
+        "line_total": 50.0,
+        "vat_code": "G",
+        "discount": 19.0,
+        "struck_through": false
+      },
+      {
+        "name": "FD-ECL RAHA DRINKING CHOCOLATE 50G",
+        "item_code": "390056",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 43.0,
+        "line_total": 43.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      },
+      {
+        "name": "FD-NESCAFE 3in1 CREAMY WHITE 15(12x18G)",
+        "item_code": "408529",
+        "quantity": 2.0,
+        "unit": "PC",
+        "unit_price": 25.0,
+        "line_total": 50.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      },
+      {
+        "name": "FR-FRESH MAHAMRI 4PACK",
+        "item_code": "775777",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 65.0,
+        "line_total": 65.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      }
+    ],
+    "notes": "cropped header; Rewarded Discount 19.00 on Techpak. Line sum already equals 208.00, do NOT subtract discount"
+  },
+  {
+    "receipt_number": "267",
+    "date": "2026-09-29",
+    "time": "11:12am",
+    "merchant": "QUICK MART LTD.",
+    "cashier": "PETER M KARIUKI",
+    "payment_method": "M-PESA",
+    "total": 250.0,
+    "subtotal_pre_vat": 215.52,
+    "vat_total": 34.48,
+    "discount_total": null,
+    "items": [
+      {
+        "name": "SN-CHICKEN SPRING ROLL PER PC",
+        "item_code": "740112",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 85.0,
+        "line_total": 85.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      },
+      {
+        "name": "SN-CHICKEN SAMOSA PER PC",
+        "item_code": "740108",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 50.0,
+        "line_total": 50.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": true
+      },
+      {
+        "name": "SN-SMOKIES PER PC",
+        "item_code": "740055",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 45.0,
+        "line_total": 45.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": true
+      },
+      {
+        "name": "FR-FRESH BROWN CHAPATI PER PC",
+        "item_code": "730096",
+        "quantity": 2.0,
+        "unit": "PC",
+        "unit_price": 35.0,
+        "line_total": 70.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      }
+    ],
+    "notes": "struck items are still in the total (85+50+45+70); loyalty points 2 earned, balance 499"
+  },
+  {
+    "receipt_number": "132",
+    "date": "2026-09-25",
+    "time": "09:10am",
+    "merchant": "QUICK MART LTD.",
+    "customer_name": "CYNTHIA",
+    "cashier": "FELISTER N MUTUA",
+    "payment_method": "M-PESA",
+    "total": 67.0,
+    "subtotal_pre_vat": 65.48,
+    "vat_total": 1.52,
+    "discount_total": 2.0,
+    "items": [
+      {
+        "name": "FD-INSTANT GRANULES STICK SATCHET 1.6G",
+        "item_code": "686163",
+        "quantity": 1.0,
+        "unit": "SA",
+        "unit_price": 11.0,
+        "line_total": 11.0,
+        "vat_code": "G",
+        "discount": 2.0,
+        "struck_through": true
+      },
+      {
+        "name": "FR-FRESH BUDGET BREAD WHITE(400GM)",
+        "item_code": "0013.12.02",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 56.0,
+        "line_total": 56.0,
+        "vat_code": "A",
+        "discount": null,
+        "struck_through": false
+      }
+    ],
+    "notes": "Rewarded Discount 2.00 is informational; sums to 67.00"
+  },
+  {
+    "receipt_number": "348",
+    "date": "2026-09-23",
+    "time": "01:30pm",
+    "merchant": "QUICK MART LTD.",
+    "customer_name": "CYNTHIA",
+    "cashier": "LUCY N MUNIU",
+    "payment_method": "M-PESA",
+    "total": 35.0,
+    "subtotal_pre_vat": 30.17,
+    "vat_total": 4.83,
+    "discount_total": null,
+    "items": [
+      {
+        "name": "FR-FRESH PUMPKIN CHAPATI PER PC",
+        "item_code": "730014",
+        "quantity": 1.0,
+        "unit": "PC",
+        "unit_price": 35.0,
+        "line_total": 35.0,
+        "vat_code": "G",
+        "discount": null,
+        "struck_through": false
+      }
+    ],
+    "notes": "red stain on the paper"
+  }
+]

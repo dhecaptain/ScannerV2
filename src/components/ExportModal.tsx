@@ -28,6 +28,7 @@ export const ExportModal: React.FC = () => {
     ALL_ITEM_COLUMNS.filter(c => c.defaultIncluded).map(c => c.key)
   );
   const [copied, setCopied] = useState<boolean>(false);
+  const [includeSensitive, setIncludeSensitive] = useState<boolean>(false);
 
   if (!isExportModalOpen) return null;
 
@@ -48,22 +49,22 @@ export const ExportModal: React.FC = () => {
     });
   };
 
-  const handleDownloadExcel = () => {
+  const handleDownloadExcel = async () => {
     const filename = `ReceiptLens_Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    exportToExcel(targetReceipts, selectedColumns, filename);
+    await exportToExcel(targetReceipts, selectedColumns, filename, includeSensitive);
     fireConfetti();
     setExportModalOpen(false);
   };
 
   const handleDownloadCSV = () => {
     const filename = `ReceiptLens_Export_${new Date().toISOString().slice(0, 10)}.csv`;
-    exportToCSV(targetReceipts, selectedColumns, filename);
+    exportToCSV(targetReceipts, selectedColumns, filename, includeSensitive);
     fireConfetti();
     setExportModalOpen(false);
   };
 
   const handleCopyTSV = async () => {
-    await copyToClipboardTSV(targetReceipts, selectedColumns);
+    await copyToClipboardTSV(targetReceipts, selectedColumns, includeSensitive);
     setCopied(true);
     fireConfetti();
     setTimeout(() => {
@@ -184,6 +185,20 @@ export const ExportModal: React.FC = () => {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Privacy Opt-in for Payment Hashes */}
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+              <input
+                type="checkbox"
+                id="optInPayment"
+                checked={includeSensitive}
+                onChange={(e) => setIncludeSensitive(e.target.checked)}
+                className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+              />
+              <label htmlFor="optInPayment" className="text-slate-700 dark:text-slate-300 cursor-pointer text-[11px]">
+                <strong>Opt-in:</strong> Include M-Pesa / payment transaction IDs in export (Default is stripped for privacy)
+              </label>
             </div>
 
             {/* Export Action Buttons */}

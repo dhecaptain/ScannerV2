@@ -4,12 +4,21 @@ import {
   TrendingUp, 
   Receipt, 
   ShoppingBag, 
-  CheckCircle2, 
   Percent, 
   Calendar,
   Layers,
   Sparkles
 } from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
 import { useReceiptStore } from '../store/useReceiptStore';
 
 export const DashboardAnalytics: React.FC = () => {
@@ -22,8 +31,7 @@ export const DashboardAnalytics: React.FC = () => {
     let discountTotal = 0;
     let itemsCount = 0;
     const itemFrequency: Record<string, { count: number; spend: number }> = {};
-    const dailySpend: Record<string, number> = {};
-    const merchantSpend: Record<string, number> = {};
+    const dailySpendMap: Record<string, number> = {};
 
     receipts.forEach((r) => {
       grandTotal += r.total;
@@ -32,10 +40,7 @@ export const DashboardAnalytics: React.FC = () => {
       if (r.discount_total) discountTotal += r.discount_total;
 
       const dateKey = r.date || 'Unknown Date';
-      dailySpend[dateKey] = (dailySpend[dateKey] || 0) + r.total;
-
-      const merchantKey = r.merchant || 'Other';
-      merchantSpend[merchantKey] = (merchantSpend[merchantKey] || 0) + r.total;
+      dailySpendMap[dateKey] = (dailySpendMap[dateKey] || 0) + r.total;
 
       r.items.forEach((item) => {
         if (!item.is_ignored) {
@@ -50,10 +55,20 @@ export const DashboardAnalytics: React.FC = () => {
       });
     });
 
-    const topItems = Object.entries(itemFrequency)
-      .map(([name, data]) => ({ name, ...data }))
+    const topItemsChartData = Object.entries(itemFrequency)
+      .map(([name, data]) => ({
+        name: name.length > 22 ? name.slice(0, 20) + '...' : name,
+        fullName: name,
+        spend: parseFloat(data.spend.toFixed(2)),
+        quantity: data.count,
+      }))
       .sort((a, b) => b.spend - a.spend)
-      .slice(0, 5);
+      .slice(0, 6);
+
+    const dailySpendChartData = Object.entries(dailySpendMap).map(([date, amount]) => ({
+      date,
+      amount: parseFloat(amount.toFixed(2)),
+    }));
 
     const currency = receipts[0]?.currency || 'KES';
 
@@ -64,16 +79,11 @@ export const DashboardAnalytics: React.FC = () => {
       discountTotal,
       itemsCount,
       receiptsCount: receipts.length,
-      topItems,
-      dailySpend,
-      merchantSpend,
+      topItemsChartData,
+      dailySpendChartData,
       currency,
     };
   }, [receipts]);
-
-  // Max spend for bar normalization
-  const maxDaySpend = Math.max(...Object.values(metrics.dailySpend), 1);
-  const maxMerchantSpend = Math.max(...Object.values(metrics.merchantSpend), 1);
 
   if (receipts.length === 0) {
     return (
@@ -91,6 +101,8 @@ export const DashboardAnalytics: React.FC = () => {
     );
   }
 
+  const barColors = ['#10b981', '#059669', '#0d9488', '#0284c7', '#6366f1', '#8b5cf6'];
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Title */}
@@ -100,7 +112,7 @@ export const DashboardAnalytics: React.FC = () => {
           <span>ReceiptLens Analytics Dashboard</span>
         </h2>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Financial summary, tax breakdown, and itemization across all scanned receipts
+          Financial summary, tax breakdown, and itemization charts across scanned receipts
         </p>
       </div>
 
@@ -151,7 +163,7 @@ export const DashboardAnalytics: React.FC = () => {
             <Percent className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Discounts Captured</span>
+            <span className="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Rewarded Discounts</span>
             <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 font-mono tabular-nums">
               {metrics.currency} {metrics.discountTotal.toFixed(2)}
             </span>
@@ -159,70 +171,62 @@ export const DashboardAnalytics: React.FC = () => {
         </div>
       </div>
 
-      {/* Breakdown Grids */}
+      {/* Real Recharts Visualizations */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Top 5 Purchased Items */}
+        {/* Top Items Bar Chart */}
         <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ShoppingBag className="w-4 h-4 text-emerald-600" />
-              <span>Top Purchased Items by Value</span>
+              <span>Top Items by Total Spend</span>
             </h3>
-            <span className="text-[11px] text-slate-500">Highest line total</span>
+            <span className="text-[11px] text-slate-500 font-mono">{metrics.currency}</span>
           </div>
 
-          <div className="space-y-3">
-            {metrics.topItems.map((item, idx) => (
-              <div key={idx} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[280px]">
-                    {idx + 1}. {item.name}
-                  </span>
-                  <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                    {metrics.currency} {item.spend.toFixed(2)}
-                  </span>
-                </div>
-                {/* Progress bar */}
-                <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div
-                    className="bg-emerald-500 h-full rounded-full transition-all"
-                    style={{ width: `${Math.min(100, (item.spend / (metrics.topItems[0]?.spend || 1)) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={metrics.topItemsChartData} layout="vertical" margin={{ left: 10, right: 20, top: 10, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={110} />
+                <Tooltip
+                  formatter={(val: any) => [`${metrics.currency} ${val}`, 'Total Spend']}
+                  labelFormatter={(_label, payload) => payload?.[0]?.payload?.fullName || _label}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff', borderRadius: '12px', fontSize: '12px' }}
+                />
+                <Bar dataKey="spend" radius={[0, 6, 6, 0]}>
+                  {metrics.topItemsChartData.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={barColors[index % barColors.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Daily Spend Breakdown */}
+        {/* Daily Spend Timeline Bar Chart */}
         <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Calendar className="w-4 h-4 text-sky-600" />
-              <span>Spend Timeline</span>
+              <span>Daily Spend Timeline</span>
             </h3>
-            <span className="text-[11px] text-slate-500">By receipt date</span>
+            <span className="text-[11px] text-slate-500 font-mono">{metrics.currency}</span>
           </div>
 
-          <div className="space-y-3">
-            {Object.entries(metrics.dailySpend).map(([date, val], idx) => (
-              <div key={idx} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-700 dark:text-slate-300 font-mono">
-                    {date}
-                  </span>
-                  <span className="font-mono text-slate-900 dark:text-white font-bold">
-                    {metrics.currency} {val.toFixed(2)}
-                  </span>
-                </div>
-                <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div
-                    className="bg-sky-500 h-full rounded-full transition-all"
-                    style={{ width: `${Math.min(100, (val / maxDaySpend) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={metrics.dailySpendChartData} margin={{ left: 0, right: 10, top: 10, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip
+                  formatter={(val: any) => [`${metrics.currency} ${val}`, 'Spend']}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff', borderRadius: '12px', fontSize: '12px' }}
+                />
+                <Bar dataKey="amount" fill="#0284c7" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>

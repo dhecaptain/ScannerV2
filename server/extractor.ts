@@ -10,7 +10,7 @@ export const ExtractedItemSchema = z.object({
   unit_price: z.number().describe('Price per single unit / each'),
   line_total: z.number().describe('Total price for this line item'),
   vat_code: z.string().nullable().optional().describe('VAT tax classification code e.g. A, G, E'),
-  discount: z.number().nullable().optional().describe('Item specific discount if awarded or printed'),
+  discount: z.number().nullable().optional().describe('Informational item-specific discount if listed'),
   struck_through: z.boolean().default(false).describe('True if a pen line, marker, or strike-through is drawn across this item'),
   confidence: z.number().min(0).max(1).default(0.95).describe('Confidence score between 0.0 and 1.0'),
 });
@@ -22,13 +22,13 @@ export const ExtractedReceiptSchema = z.object({
   time: z.string().nullable().optional().describe('Time e.g. 12:23pm or 14:06:45'),
   receipt_number: z.string().nullable().optional().describe('Receipt number, invoice #, or Rct code'),
   currency: z.string().default('KES').describe('Currency ISO code or symbol, e.g. KES, USD, EUR, GBP'),
-  customer_name: z.string().nullable().optional().describe('Customer name printed on the receipt or M-Pesa info'),
+  customer_name: z.string().nullable().optional().describe('Customer name printed on the receipt'),
   cashier: z.string().nullable().optional().describe('Cashier name or ID'),
   payment_method: z.string().nullable().optional().describe('Payment method e.g. M-PESA, CASH, VISA, MASTERCARD'),
   items: z.array(ExtractedItemSchema).describe('List of all line items purchased'),
   subtotal_pre_vat: z.number().nullable().optional().describe('Pre-tax subtotal amount if present'),
   vat_total: z.number().nullable().optional().describe('Total VAT tax amount'),
-  discount_total: z.number().nullable().optional().describe('Total discounts awarded'),
+  discount_total: z.number().nullable().optional().describe('Total informational discount amount if printed in Rewarded Discounts'),
   total: z.number().describe('Final total payable amount as printed'),
   amount_paid: z.number().nullable().optional().describe('Amount tendered or paid by customer'),
   change: z.number().nullable().optional().describe('Change returned to customer'),
@@ -38,7 +38,7 @@ export const ExtractedReceiptSchema = z.object({
 
 export type ExtractedReceipt = z.infer<typeof ExtractedReceiptSchema>;
 
-// System prompt strictly adhering to Section 4
+// System prompt strictly adhering to Section 4 & Requirement D
 export const RECEIPT_SYSTEM_PROMPT = `
 You are an expert OCR and financial document vision parser for "ReceiptLens".
 Your job is to read images of receipts, invoices, or document tables with extreme precision and output strictly structured JSON.
@@ -57,22 +57,24 @@ CRITICAL PARSING RULES:
 4. Strike-throughs & Pen marks:
    - Detect hand-drawn pen lines, strike-throughs, checkmarks, or red/blue pen ink over any item.
    - Set struck_through=true for that item, BUT STILL EXTRACT ALL ITS DETAILS!
-   - Add an explanation in warnings[] indicating whether the printed receipt total includes or excludes the struck item based on summing the line items.
-5. Irrelevant text filtering:
+   - Note: on these receipts, struck-through items ARE STILL INCLUDED in the printed register TOTAL. Do not exclude them from the items list.
+   - Add a warning: "Pen strike-through detected on item [Name]; item is included in printed total."
+5. REWARDED DISCOUNTS ARE INFORMATIONAL:
+   - Thermal receipts often have a "REWARDED DISCOUNTS" section at the bottom listing discount amounts per item.
+   - On these receipts, the sum of line_totals ALREADY EQUALS the printed TOTAL.
+   - DO NOT subtract discounts when extracting or checking the total! Record the discount on the item and in discount_total for informational purposes only.
+6. Irrelevant text filtering:
    - Ignore general clutter unless specifically requested in custom fields: phone numbers, barcodes, QR codes, KRA/tax control unit numbers ("KRAMW...", "CU Inv"), "For home deliveries call...", marketing/loyalty promos.
    - However, DO capture customer name, cashier name, and payment method if printed.
-6. Rewarded Discounts:
-   - Thermal receipts often have a "REWARDED DISCOUNTS" section at the bottom listing discount amounts per item.
-   - Match each rewarded discount to the corresponding item in the items list and set the item's discount field, and set discount_total to the total discount.
 7. Cropped receipts:
    - If the receipt is cut off at the top (missing header/store name) or bottom (missing totals), gracefully set those fields to null and add a descriptive warning in warnings[].
 8. Imperfections:
    - Reliably handle red ink stains, creases, faded thermal print, glare, rotated text, and low contrast.
 9. Number and currency formatting:
-   - Convert all prices to standard numbers (e.g. 75.81). Detect currency from the context (e.g., Kenyan Shillings "KES", USD, EUR, etc. Default to KES for East African receipts).
+   - Convert all prices to standard numbers (e.g. 75.81). Detect currency from the context (default to KES for East African receipts).
 `;
 
-export function buildGeminiResponseSchema(customFields?: Array<{ name: string; description?: string; type: string }>) {
+export function buildGeminiResponseSchema(customFields?: Array<{ name: string; description?: string; type?: string }>) {
   const baseItemProperties: Record<string, any> = {
     name: { type: Type.STRING, description: 'Item name / description' },
     item_code: { type: Type.STRING, description: 'Item code, SKU, or barcode if printed' },
@@ -81,7 +83,7 @@ export function buildGeminiResponseSchema(customFields?: Array<{ name: string; d
     unit_price: { type: Type.NUMBER, description: 'Unit price / each price' },
     line_total: { type: Type.NUMBER, description: 'Line total amount' },
     vat_code: { type: Type.STRING, description: 'VAT classification code e.g. A, G, E' },
-    discount: { type: Type.NUMBER, description: 'Discount applied to this item' },
+    discount: { type: Type.NUMBER, description: 'Informational discount applied to this item' },
     struck_through: { type: Type.BOOLEAN, description: 'True if hand-drawn strike-through or pen mark across this item' },
     confidence: { type: Type.NUMBER, description: 'Extraction confidence 0.0 to 1.0' },
   };
@@ -106,7 +108,7 @@ export function buildGeminiResponseSchema(customFields?: Array<{ name: string; d
     },
     subtotal_pre_vat: { type: Type.NUMBER, description: 'Subtotal before tax' },
     vat_total: { type: Type.NUMBER, description: 'Total VAT tax amount' },
-    discount_total: { type: Type.NUMBER, description: 'Total discount amount' },
+    discount_total: { type: Type.NUMBER, description: 'Total informational discount amount' },
     total: { type: Type.NUMBER, description: 'Final total amount printed' },
     amount_paid: { type: Type.NUMBER, description: 'Amount paid / cash paid / mpesa pay' },
     change: { type: Type.NUMBER, description: 'Change given' },
@@ -117,7 +119,6 @@ export function buildGeminiResponseSchema(customFields?: Array<{ name: string; d
     },
   };
 
-  // If user requested custom fields, add them to schema
   if (customFields && customFields.length > 0) {
     const customProps: Record<string, any> = {};
     for (const f of customFields) {
@@ -146,7 +147,7 @@ export async function extractReceiptWithGemini(params: {
   imageBase64: string;
   mimeType: string;
   modelName?: string;
-  customFields?: Array<{ name: string; description?: string; type: string }>;
+  customFields?: Array<{ name: string; description?: string; type?: string }>;
   documentType?: string;
   askPrompt?: string;
 }): Promise<ExtractedReceipt> {
@@ -155,13 +156,7 @@ export async function extractReceiptWithGemini(params: {
     throw new Error('GEMINI_API_KEY is not configured in server environment.');
   }
 
-  // Model selection: allow user choice of 'gemini-2.5-flash' or 'gemini-2.5-pro', or fallback to 'gemini-3.8-flash'
-  let targetModel = params.modelName || 'gemini-2.5-flash';
-  if (targetModel.includes('pro')) {
-    targetModel = 'gemini-2.5-pro';
-  } else if (!targetModel.includes('flash') && !targetModel.includes('pro')) {
-    targetModel = 'gemini-2.5-flash';
-  }
+  const targetModel = params.modelName === 'gemini-2.5-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
 
   const ai = new GoogleGenAI({
     apiKey,
@@ -177,7 +172,8 @@ export async function extractReceiptWithGemini(params: {
   let promptText = `
 Document Type: ${params.documentType || 'Receipt / POS Slip'}.
 Analyze this document photo with extreme care. Extract the merchant, branch, date, receipt number, currency, customer, cashier, payment method, all line items (with item code, quantity, unit, price, line total, VAT code, and discount), subtotal, VAT, total, and change.
-Inspect carefully for strike-throughs or handwritten pen markings over any items, and note whether the total includes or excludes them.
+Inspect carefully for strike-throughs or handwritten pen markings over any items. Struck items are still included in printed total.
+Remember: Rewarded Discounts are informational only; line totals already sum to the printed total.
 `;
 
   if (params.askPrompt) {
@@ -191,7 +187,6 @@ Inspect carefully for strike-throughs or handwritten pen markings over any items
     },
   };
 
-  // Primary OCR call
   let responseText: string | undefined;
   try {
     const response = await ai.models.generateContent({
@@ -208,37 +203,21 @@ Inspect carefully for strike-throughs or handwritten pen markings over any items
     });
     responseText = response.text;
   } catch (err: any) {
-    // If the chosen model is temporarily unavailable or throttled, try flash fallback
-    if (targetModel !== 'gemini-3.8-flash' && targetModel !== 'gemini-2.5-flash') {
-      const fallbackResp = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: {
-          parts: [imagePart, { text: promptText }],
-        },
-        config: {
-          systemInstruction: RECEIPT_SYSTEM_PROMPT,
-          responseMimeType: 'application/json',
-          responseSchema: responseSchema,
-          temperature: 0.1,
-        },
-      });
-      responseText = fallbackResp.text;
-    } else {
-      throw err;
-    }
+    const errCode = `ERR_GEMINI_${Date.now()}`;
+    console.error(`[Server ${errCode}] generateContent failed:`, err?.status || err?.code || 'GEN_ERROR');
+    throw new Error(`OCR model generation failed [${errCode}]. Please try again or use Basic OCR mode.`);
   }
 
   if (!responseText) {
     throw new Error('Gemini API returned an empty response.');
   }
 
-  // Parse JSON
+  // Parse JSON with single repair attempt
   let rawJson: any;
   try {
     rawJson = JSON.parse(responseText.trim());
-  } catch (parseErr) {
-    // Section 5: Retry once with a repair prompt
-    const repairPrompt = `The previous response produced invalid JSON: "${responseText.slice(0, 300)}...".
+  } catch {
+    const repairPrompt = `The previous response produced invalid JSON.
 Please output ONLY valid strictly formatted JSON matching the required schema.`;
     const repairResp = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -257,9 +236,10 @@ Please output ONLY valid strictly formatted JSON matching the required schema.`;
   // Validate with Zod
   const validated = ExtractedReceiptSchema.parse(rawJson);
 
-  // Section 5: Math checks & Verification pass
-  // Check if quantity * unit_price ≈ line_total (tolerance 0.02)
-  // Check if sum of line_totals - discount_total ≈ total
+  // Requirement D: Strict Math checks
+  // Check 1: quantity × unit_price ≈ line_total (tolerance 0.02)
+  // Check 2: sum(line_totals) ≈ total (tolerance 0.02), counting struck-through items too! (Do NOT subtract discounts)
+  // Check 3: if VAT rows present, pre_vat + vat ≈ total
   let hasInconsistency = false;
   const inconsistentLines: string[] = [];
 
@@ -273,13 +253,19 @@ Please output ONLY valid strictly formatted JSON matching the required schema.`;
     itemsSum += item.line_total;
   }
 
-  const discount = validated.discount_total || 0;
-  if (validated.total > 0 && Math.abs((itemsSum - discount) - validated.total) > 0.05) {
+  if (validated.total > 0 && Math.abs(itemsSum - validated.total) > 0.02) {
     hasInconsistency = true;
-    inconsistentLines.push(`Total sum mismatch: sum(${itemsSum.toFixed(2)}) - discount(${discount.toFixed(2)}) = ${(itemsSum - discount).toFixed(2)}, but receipt total is ${validated.total}`);
+    inconsistentLines.push(`Total sum mismatch: sum of line items (${itemsSum.toFixed(2)}) != printed total (${validated.total.toFixed(2)}). Note: Rewarded discounts are informational and must NOT be subtracted.`);
   }
 
-  // If an inconsistency was flagged, automatically do a second "verification pass"
+  if (validated.subtotal_pre_vat && validated.vat_total && validated.total > 0) {
+    const expectedSum = validated.subtotal_pre_vat + validated.vat_total;
+    if (Math.abs(expectedSum - validated.total) > 0.05) {
+      inconsistentLines.push(`VAT sum mismatch: pre-VAT (${validated.subtotal_pre_vat.toFixed(2)}) + VAT (${validated.vat_total.toFixed(2)}) != total (${validated.total.toFixed(2)})`);
+    }
+  }
+
+  // Automatic verification pass if inconsistency detected
   if (hasInconsistency && inconsistentLines.length > 0) {
     try {
       const verificationPrompt = `
@@ -289,11 +275,12 @@ ${inconsistentLines.join('\n')}
 Previous extraction:
 ${JSON.stringify(validated, null, 2)}
 
-Re-examine the photo carefully. Verify whether:
-1. An item code was confused with price or quantity
-2. An item had a quantity like "2.000 PC" or decimal weight "0.190 KG"
-3. A discount was deducted from total or line items
-4. A pen strike-through caused an item to be excluded or included in the final printed total
+Re-examine the photo carefully.
+Remember:
+1. Rewarded Discounts are informational only; the sum of line_totals equals the printed TOTAL. Do NOT subtract discounts.
+2. Struck-through items are included in the printed register total.
+3. Quantity can have decimals like 0.190 KG.
+4. Two-line items: line 1 is item name, line 2 has the SKU code underneath followed by qty/each/total.
 
 Return the corrected and verified final JSON matching the schema.
 `;
@@ -319,8 +306,8 @@ Return the corrected and verified final JSON matching the schema.
         ];
         return revalidated;
       }
-    } catch (vErr) {
-      // If verification pass fails, fall back to initial validated result with warning
+    } catch {
+      // If verification pass still fails, mark receipt with warning (needs review) instead of silently altering
       validated.warnings.push(`Mathematical check notice: ${inconsistentLines.join('; ')}`);
     }
   }

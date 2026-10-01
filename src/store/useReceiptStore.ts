@@ -4,6 +4,7 @@ import { SAMPLE_RECEIPTS } from '../data/sampleReceipts';
 import { preprocessReceiptImage } from '../utils/imagePreprocessing';
 import { runTesseractFallback } from '../utils/tesseractFallback';
 import { validateReceipt } from '../utils/validation';
+import { normalizeFileInput } from '../utils/heicAndPdf';
 
 export const DEFAULT_PRESET_FIELDS: CustomFieldDef[] = [
   { id: 'f_cashier', name: 'Cashier', description: 'Name of the cashier who served the order', type: 'string', isPreset: true, enabled: true },
@@ -125,6 +126,7 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
 
     let processedBlob: Blob;
     let processedDataUrl: string;
+    let processedBase64 = '';
     let qualityReport: any;
     let detectedCorners: [Point, Point, Point, Point];
 
@@ -135,6 +137,7 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
       });
 
       processedBlob = prepResult.processedBlob;
+      processedBase64 = prepResult.processedBase64;
       processedDataUrl = prepResult.processedDataUrl;
       qualityReport = prepResult.quality;
       detectedCorners = prepResult.detectedCorners;
@@ -166,17 +169,36 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
       .filter(f => f.enabled)
       .map(f => ({ name: f.name, description: f.description, type: f.type }));
 
-    // Convert blob to base64
-    const base64Data: string = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const res = reader.result as string;
-        const b64 = res.includes(',') ? res.split(',')[1] : res;
-        resolve(b64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(processedBlob);
-    });
+    // Ensure base64 string and verify <= 3.8 MB
+    let base64Data: string = processedBase64;
+    if (!base64Data) {
+      base64Data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const res = reader.result as string;
+          const b64 = res.includes(',') ? res.split(',')[1] : res;
+          resolve(b64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(processedBlob);
+      });
+    }
+
+    if (base64Data.length > 3.8 * 1024 * 1024) {
+      set(state => ({
+        receipts: state.receipts.map(r =>
+          r.id === receiptId
+            ? {
+                ...r,
+                status: 'failed',
+                progress_message: 'Image too large after compression. Please crop closer to the receipt or use a lower camera resolution.',
+                warnings: ['Image too large after compression. Please crop closer to the receipt or use a lower camera resolution.'],
+              }
+            : r
+        ),
+      }));
+      return;
+    }
 
     // Exponential backoff retry logic (up to 2 retries)
     let extractedData: any = null;
@@ -352,9 +374,21 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
     setSelfTestOpen: (isSelfTestOpen) => set({ isSelfTestOpen }),
 
     addUploadedFiles: async (files: File[]) => {
+      // Normalize HEIC and PDF files into standard JPEG images/pages
+      const normalizedFiles: File[] = [];
+      for (const f of files) {
+        try {
+          const converted = await normalizeFileInput(f);
+          normalizedFiles.push(...converted);
+        } catch (err) {
+          console.warn(`Failed to normalize file ${f.name}, using raw:`, err);
+          normalizedFiles.push(f);
+        }
+      }
+
       const newItems: ReceiptData[] = [];
 
-      for (const file of files) {
+      for (const file of normalizedFiles) {
         const id = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         const objUrl = URL.createObjectURL(file);
 

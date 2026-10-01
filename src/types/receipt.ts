@@ -82,6 +82,7 @@ export interface ReceiptData {
     brightness_score?: number;
     width?: number;
     height?: number;
+    message?: string;
   };
   crop_corners?: [Point, Point, Point, Point]; // top-left, top-right, bottom-right, bottom-left
   rotation_angle?: number;

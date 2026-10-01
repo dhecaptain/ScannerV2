@@ -201,9 +201,15 @@ export const UploadSection: React.FC = () => {
                       />
 
                       {/* Engine Tag */}
-                      <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-black/70 text-white backdrop-blur-xs">
-                        {rec.engine === 'gemini' ? (rec.model?.includes('pro') ? '2.5 Pro' : '2.5 Flash') : 'Basic OCR'}
-                      </span>
+                      {rec.engine === 'gemini' ? (
+                        <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-black/70 text-white backdrop-blur-xs">
+                          {rec.model?.includes('pro') ? '2.5 Pro' : '2.5 Flash'}
+                        </span>
+                      ) : (
+                        <span className="absolute bottom-1 left-1 text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 shadow-sm">
+                          Basic mode
+                        </span>
+                      )}
 
                       {/* Status Overlay Badge */}
                       <div className="absolute top-1 right-1">

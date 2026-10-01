@@ -13,6 +13,7 @@ export interface QualityReport {
 
 export interface PreprocessingResult {
   processedBlob: Blob;
+  processedBase64: string;
   processedDataUrl: string;
   originalDataUrl: string;
   width: number;
@@ -20,10 +21,47 @@ export interface PreprocessingResult {
   detectedCorners: [Point, Point, Point, Point]; // TL, TR, BR, BL
   quality: QualityReport;
   appliedEnhancements: string[];
+  edgeConfidence: number;
+  needsManualCropReview: boolean;
+}
+
+let openCvWorker: Worker | null = null;
+let workerInitPromise: Promise<void> | null = null;
+
+function getOpenCvWorker(): Promise<Worker | null> {
+  if (typeof window === 'undefined' || !window.Worker) {
+    return Promise.resolve(null);
+  }
+  if (!openCvWorker) {
+    try {
+      openCvWorker = new Worker('/opencv-worker.js');
+      workerInitPromise = new Promise((resolve) => {
+        const initId = 'init_' + Date.now();
+        const handler = (e: MessageEvent) => {
+          if (e.data.id === initId) {
+            openCvWorker?.removeEventListener('message', handler);
+            resolve();
+          }
+        };
+        openCvWorker?.addEventListener('message', handler);
+        openCvWorker?.postMessage({ id: initId, type: 'INIT' });
+
+        // Timeout safety: resolve after 5 seconds even if OpenCV fails to load
+        setTimeout(() => {
+          openCvWorker?.removeEventListener('message', handler);
+          resolve();
+        }, 5000);
+      });
+    } catch (e) {
+      console.warn('Failed to construct OpenCV worker:', e);
+      return Promise.resolve(null);
+    }
+  }
+  return (workerInitPromise || Promise.resolve()).then(() => openCvWorker);
 }
 
 /**
- * Loads an image from File or Blob or URL into an HTMLImageElement
+ * Loads an image from File, Blob, or URL into an HTMLImageElement
  */
 export function loadImage(src: string | File | Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -44,8 +82,8 @@ export function loadImage(src: string | File | Blob): Promise<HTMLImageElement> 
  * Computes Laplacian variance on grayscale image data to detect blur
  */
 export function calculateBlurScore(ctx: CanvasRenderingContext2D, width: number, height: number): number {
-  const sampleW = Math.min(width, 400);
-  const sampleH = Math.min(height, 400);
+  const sampleW = Math.min(width, 350);
+  const sampleH = Math.min(height, 350);
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = sampleW;
   tempCanvas.height = sampleH;
@@ -55,16 +93,11 @@ export function calculateBlurScore(ctx: CanvasRenderingContext2D, width: number,
   const imgData = tempCtx.getImageData(0, 0, sampleW, sampleH);
   const data = imgData.data;
 
-  // Convert to grayscale array
   const gray = new Float32Array(sampleW * sampleH);
   for (let i = 0; i < data.length; i += 4) {
     gray[i / 4] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
   }
 
-  // 3x3 Laplacian filter kernel:
-  //  0  1  0
-  //  1 -4  1
-  //  0  1  0
   let sum = 0;
   let sumSq = 0;
   let count = 0;
@@ -111,107 +144,97 @@ export function calculateBrightness(ctx: CanvasRenderingContext2D, width: number
 }
 
 /**
- * Robust Receipt Edge Detection:
- * Designed specifically for receipts on dark notebooks/tables (like the user sample images),
- * thermal paper, and tall, narrow rectangular receipts.
+ * Dispatches edge detection to OpenCV Web Worker (with local fallback)
  */
-export function detectReceiptCorners(
+export async function detectEdgesWithWorker(
   canvas: HTMLCanvasElement,
   w: number,
   h: number
-): [Point, Point, Point, Point] {
-  // Default padding bounding quadrilateral if contrast is low or edges are ambiguous
-  const defaultCorners: [Point, Point, Point, Point] = [
-    { x: w * 0.08, y: h * 0.04 }, // Top-Left
-    { x: w * 0.92, y: h * 0.04 }, // Top-Right
-    { x: w * 0.92, y: h * 0.96 }, // Bottom-Right
-    { x: w * 0.08, y: h * 0.96 }, // Bottom-Left
-  ];
+): Promise<{ corners: [Point, Point, Point, Point]; confidence: number }> {
+  const worker = await getOpenCvWorker();
+  const scale = Math.min(1, 600 / Math.max(w, h));
+  const sw = Math.floor(w * scale);
+  const sh = Math.floor(h * scale);
 
-  try {
-    const scale = Math.min(1, 600 / Math.max(w, h));
-    const sw = Math.floor(w * scale);
-    const sh = Math.floor(h * scale);
+  const smCanvas = document.createElement('canvas');
+  smCanvas.width = sw;
+  smCanvas.height = sh;
+  const smCtx = smCanvas.getContext('2d')!;
+  smCtx.drawImage(canvas, 0, 0, sw, sh);
 
-    const smCanvas = document.createElement('canvas');
-    smCanvas.width = sw;
-    smCanvas.height = sh;
-    const smCtx = smCanvas.getContext('2d')!;
-    smCtx.drawImage(canvas, 0, 0, sw, sh);
+  const imgData = smCtx.getImageData(0, 0, sw, sh);
 
-    const imgData = smCtx.getImageData(0, 0, sw, sh);
-    const data = imgData.data;
+  if (worker) {
+    try {
+      const taskId = 'edge_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      const workerResult: any = await new Promise((resolve, reject) => {
+        const handler = (e: MessageEvent) => {
+          if (e.data.id === taskId) {
+            worker.removeEventListener('message', handler);
+            resolve(e.data);
+          }
+        };
+        worker.addEventListener('message', handler);
+        worker.postMessage({
+          id: taskId,
+          type: 'DETECT_EDGES',
+          imageData: imgData,
+          width: sw,
+          height: sh,
+        });
 
-    // Build luminance map
-    const lum = new Uint8Array(sw * sh);
-    let avgLum = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const v = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-      lum[i / 4] = v;
-      avgLum += v;
-    }
-    avgLum /= sw * sh;
+        // 3-second timeout fallback
+        setTimeout(() => {
+          worker.removeEventListener('message', handler);
+          resolve(null);
+        }, 3000);
+      });
 
-    // Detect high-contrast horizontal and vertical paper boundaries (thermal paper is white/light on darker table)
-    // Find column bounds where receipt paper exists
-    const colBright: number[] = new Array(sw).fill(0);
-    const rowBright: number[] = new Array(sh).fill(0);
+      if (workerResult && workerResult.corners) {
+        // Rescale corners back to full dimension
+        const scaledCorners = workerResult.corners.map((p: Point) => ({
+          x: Math.round(p.x / scale),
+          y: Math.round(p.y / scale),
+        })) as [Point, Point, Point, Point];
 
-    for (let y = 0; y < sh; y++) {
-      for (let x = 0; x < sw; x++) {
-        const val = lum[y * sw + x];
-        colBright[x] += val;
-        rowBright[y] += val;
+        return {
+          corners: scaledCorners,
+          confidence: workerResult.confidence || 0.8,
+        };
       }
+    } catch (e) {
+      console.warn('Worker edge detection error, falling back:', e);
     }
-
-    // Threshold based on background vs paper
-    let minX = sw * 0.08;
-    let maxX = sw * 0.92;
-    let minY = sh * 0.04;
-    let maxY = sh * 0.96;
-
-    const colAvg = colBright.map(v => v / sh);
-    const rowAvg = rowBright.map(v => v / sw);
-    const midBrightness = (Math.max(...colAvg) + Math.min(...colAvg)) / 2;
-
-    // Find first and last columns significantly above background
-    for (let x = 0; x < sw * 0.4; x++) {
-      if (colAvg[x] > midBrightness * 0.95) {
-        minX = Math.max(sw * 0.03, x);
-        break;
-      }
-    }
-    for (let x = sw - 1; x > sw * 0.6; x--) {
-      if (colAvg[x] > midBrightness * 0.95) {
-        maxX = Math.min(sw * 0.97, x);
-        break;
-      }
-    }
-
-    for (let y = 0; y < sh * 0.3; y++) {
-      if (rowAvg[y] > midBrightness * 0.95) {
-        minY = Math.max(sh * 0.02, y);
-        break;
-      }
-    }
-    for (let y = sh - 1; y > sh * 0.7; y--) {
-      if (rowAvg[y] > midBrightness * 0.95) {
-        maxY = Math.min(sh * 0.98, y);
-        break;
-      }
-    }
-
-    // Convert scaled coordinates back to full image size
-    return [
-      { x: Math.round(minX / scale), y: Math.round(minY / scale) },
-      { x: Math.round(maxX / scale), y: Math.round(minY / scale) },
-      { x: Math.round(maxX / scale), y: Math.round(maxY / scale) },
-      { x: Math.round(minX / scale), y: Math.round(maxY / scale) },
-    ];
-  } catch {
-    return defaultCorners;
   }
+
+  // Fallback if worker not available
+  const defaultCorners = detectReceiptCorners(w, h);
+  return { corners: defaultCorners, confidence: 0.5 };
+}
+
+/**
+ * Returns default quadrilateral corner points for a given width and height
+ */
+export function detectReceiptCorners(
+  _canvasOrW?: HTMLCanvasElement | number,
+  wOrH?: number,
+  maybeH?: number
+): [Point, Point, Point, Point] {
+  let w = 800;
+  let h = 1200;
+  if (typeof _canvasOrW === 'number') {
+    w = _canvasOrW;
+    h = typeof wOrH === 'number' ? wOrH : 1200;
+  } else if (_canvasOrW && typeof _canvasOrW === 'object' && 'width' in _canvasOrW) {
+    w = typeof wOrH === 'number' ? wOrH : _canvasOrW.width;
+    h = typeof maybeH === 'number' ? maybeH : _canvasOrW.height;
+  }
+  return [
+    { x: Math.round(w * 0.05), y: Math.round(h * 0.03) },
+    { x: Math.round(w * 0.95), y: Math.round(h * 0.03) },
+    { x: Math.round(w * 0.95), y: Math.round(h * 0.97) },
+    { x: Math.round(w * 0.05), y: Math.round(h * 0.97) },
+  ];
 }
 
 /**
@@ -224,7 +247,6 @@ export function applyPerspectiveTransform(
 ): HTMLCanvasElement {
   const [tl, tr, br, bl] = corners;
 
-  // Calculate width and height of output rectangle
   const widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
   const widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
   const targetW = Math.max(200, Math.round(Math.max(widthTop, widthBottom)));
@@ -238,11 +260,8 @@ export function applyPerspectiveTransform(
   outCanvas.height = targetH;
   const outCtx = outCanvas.getContext('2d')!;
 
-  // Bilinear interpolation warp across the quadrilateral mesh
-  const srcCtx = sourceCanvas.getContext('2d')!;
   const gridX = 16;
   const gridY = 24;
-
   const dx = targetW / gridX;
   const dy = targetH / gridY;
 
@@ -253,13 +272,11 @@ export function applyPerspectiveTransform(
       const u1 = (gx + 1) / gridX;
       const v1 = (gy + 1) / gridY;
 
-      // Bilinear interpolation of src coordinates
       const p00 = bilinearPoint(tl, tr, br, bl, u0, v0);
       const p10 = bilinearPoint(tl, tr, br, bl, u1, v0);
       const p11 = bilinearPoint(tl, tr, br, bl, u1, v1);
       const p01 = bilinearPoint(tl, tr, br, bl, u0, v1);
 
-      // Draw textured triangles
       drawTriangle(
         outCtx,
         sourceCanvas,
@@ -316,7 +333,6 @@ function drawTriangle(
   ctx.closePath();
   ctx.clip();
 
-  // Affine transform matrix
   const denom = (sx0 * (sy1 - sy2) - sx1 * sy0 + sx2 * sy0 + (sx1 - sx2) * sy1);
   if (denom === 0) {
     ctx.restore();
@@ -328,7 +344,7 @@ function drawTriangle(
   const m21 = (sx0 * (x1 - x2) - sx1 * x0 + sx2 * x0 + (sx1 - sx2) * x1) / denom;
   const m22 = - (sx1 * y2 + sx0 * (y1 - y2) - sx2 * y1 + (sx2 - sx1) * y0) / denom;
   const dx = (sx0 * (sy2 * x1 - sy1 * x2) + sy0 * (sx1 * x2 - sx2 * x1) + (sx2 * sy1 - sx1 * sy2) * x0) / denom;
-  const dy = (sx0 * (sy2 * y1 - sy1 * y2) + sy0 * (sx1 * y2 - sx2 * y1) + (sx2 * sy1 - sx1 * sy2) * y0) / denom;
+  const dy = (sx0 * (sy2 * y1 - sy1 * y2) + sy0 * (sx1 * y2 - sx2 * y1) + (sx2 * sy1 - sx1 * sy2) * x0) / denom;
 
   ctx.transform(m11, m12, m21, m22, dx, dy);
   ctx.drawImage(im, 0, 0);
@@ -337,7 +353,6 @@ function drawTriangle(
 
 /**
  * Lighting enhancement & contrast normalization without aggressive binarization.
- * Preserves color/grayscale nuances so Gemini Vision model can read thermal faint print.
  */
 export function enhanceImageLighting(
   canvas: HTMLCanvasElement,
@@ -350,23 +365,19 @@ export function enhanceImageLighting(
   const data = imgData.data;
   const applied: string[] = [];
 
-  // Low light correction
   let factor = 1.0;
   let offset = 0;
 
-  if (brightness < 90) {
-    // Under-exposed photo: lift midtones and boost contrast
+  if (brightness < 85) {
     factor = 1.25;
-    offset = 25;
+    offset = 20;
     applied.push('Low-light exposure boost');
-  } else if (brightness > 210) {
-    // Over-exposed / washed out
+  } else if (brightness > 215) {
     factor = 0.9;
-    offset = -15;
+    offset = -12;
     applied.push('Glare reduction & contrast restoration');
   }
 
-  // Mild unsharp mask / contrast enhancement
   for (let i = 0; i < data.length; i += 4) {
     data[i] = Math.min(255, Math.max(0, (data[i] + offset) * factor));
     data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] + offset) * factor));
@@ -374,7 +385,7 @@ export function enhanceImageLighting(
   }
 
   ctx.putImageData(imgData, 0, 0);
-  applied.push('Adaptive illumination normalizer');
+  applied.push('Adaptive illumination normalization');
   return { canvas, applied };
 }
 
@@ -404,9 +415,107 @@ export function rotateCanvas(canvas: HTMLCanvasElement, degrees: number): HTMLCa
 }
 
 /**
+ * Reads EXIF orientation from JPEG byte stream:
+ * 1 = 0 deg, 3 = 180 deg, 6 = 90 deg CW, 8 = 270 deg CW
+ */
+export async function getExifOrientation(fileOrBlob: File | Blob): Promise<number> {
+  if (typeof Blob === 'undefined' || !(fileOrBlob instanceof Blob)) return 1;
+  try {
+    const slice = fileOrBlob.slice(0, 64 * 1024);
+    const buffer = await slice.arrayBuffer();
+    const view = new DataView(buffer);
+    if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) return 1;
+
+    let offset = 2;
+    const maxOffset = view.byteLength - 2;
+    while (offset < maxOffset) {
+      const marker = view.getUint16(offset, false);
+      offset += 2;
+      if (marker === 0xffe1) {
+        // APP1 Exif marker
+        offset += 2; // skip length
+        if (view.getUint32(offset, false) !== 0x45786966) return 1; // "Exif"
+        offset += 6;
+        const little = view.getUint16(offset, false) === 0x4949; // "II" vs "MM"
+        const ifdOffset = view.getUint32(offset + 4, little);
+        let tagOffset = offset + ifdOffset;
+        if (tagOffset + 2 > view.byteLength) return 1;
+        const tagsCount = view.getUint16(tagOffset, little);
+        tagOffset += 2;
+        for (let i = 0; i < tagsCount; i++) {
+          if (tagOffset + 12 > view.byteLength) break;
+          const tag = view.getUint16(tagOffset, little);
+          if (tag === 0x0112) {
+            // Orientation tag
+            return view.getUint16(tagOffset + 8, little);
+          }
+          tagOffset += 12;
+        }
+        return 1;
+      } else if ((marker & 0xff00) === 0xff00) {
+        if (marker === 0xffda || marker === 0xffd9) break; // Start of scan or end of image
+        const len = view.getUint16(offset, false);
+        offset += len;
+      } else {
+        break;
+      }
+    }
+  } catch {
+    return 1;
+  }
+  return 1;
+}
+
+/**
+ * Requirement B: Iterative 3-pass compression ensuring the base64 payload is <= 3.8MB:
+ * Pass 1: longest side <= 2000px, JPEG quality 0.85
+ * Pass 2: longest side <= 1600px, JPEG quality 0.70
+ * Pass 3: longest side <= 1200px, JPEG quality 0.55
+ * If still > 3.8MB after 3 passes, throws descriptive user error.
+ */
+export async function compressToTargetPayloadLimit(
+  canvas: HTMLCanvasElement,
+  maxBase64Bytes = 3.8 * 1024 * 1024
+): Promise<{ blob: Blob; base64: string; dataUrl: string }> {
+  const passes = [
+    { maxDim: 2000, quality: 0.85 },
+    { maxDim: 1600, quality: 0.70 },
+    { maxDim: 1200, quality: 0.55 },
+  ];
+
+  let currentCanvas = canvas;
+
+  for (let i = 0; i < passes.length; i++) {
+    const { maxDim, quality } = passes[i];
+    const longest = Math.max(currentCanvas.width, currentCanvas.height);
+    if (longest > maxDim) {
+      const scale = maxDim / longest;
+      const targetW = Math.round(currentCanvas.width * scale);
+      const targetH = Math.round(currentCanvas.height * scale);
+      const resized = document.createElement('canvas');
+      resized.width = targetW;
+      resized.height = targetH;
+      const rCtx = resized.getContext('2d')!;
+      rCtx.drawImage(currentCanvas, 0, 0, targetW, targetH);
+      currentCanvas = resized;
+    }
+
+    const dataUrl = currentCanvas.toDataURL('image/jpeg', quality);
+    const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+
+    if (base64.length <= maxBase64Bytes) {
+      const blob: Blob = await new Promise((resolve) => {
+        currentCanvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', quality);
+      });
+      return { blob, base64, dataUrl };
+    }
+  }
+
+  throw new Error('Image too large after compression. Please crop closer to the receipt or use a lower camera resolution.');
+}
+
+/**
  * Full Preprocessing Pipeline
- * Downscales longest side <= 2000px, detects edges, warps if autoTransform=true,
- * runs quality check (Laplacian blur + dark detection), and compresses to 85% JPEG.
  */
 export async function preprocessReceiptImage(
   fileOrUrl: File | Blob | string,
@@ -420,7 +529,7 @@ export async function preprocessReceiptImage(
   let srcW = img.naturalWidth || img.width;
   let srcH = img.naturalHeight || img.height;
 
-  // 1. Initial downscale if ultra-high res, so processing is snappy and stays under 2000px
+  // 1. Initial downscale so longest side <= 2000px
   const maxDim = 2000;
   let targetW = srcW;
   let targetH = srcH;
@@ -434,20 +543,29 @@ export async function preprocessReceiptImage(
   canvas.width = targetW;
   canvas.height = targetH;
   const ctx = canvas.getContext('2d')!;
+  
+  // Drawing to canvas strips EXIF GPS metadata automatically
   ctx.drawImage(img, 0, 0, targetW, targetH);
 
-  // Store original preview
   const originalDataUrl = canvas.toDataURL('image/jpeg', 0.9);
 
-  // 2. Handle rotation if specified
-  if (options.rotation) {
-    canvas = rotateCanvas(canvas, options.rotation);
+  // 2. Handle manual or EXIF rotation
+  let effectiveRotation = options.rotation || 0;
+  if (!effectiveRotation && (fileOrUrl instanceof Blob)) {
+    const exifOrientation = await getExifOrientation(fileOrUrl);
+    if (exifOrientation === 3) effectiveRotation = 180;
+    else if (exifOrientation === 6) effectiveRotation = 90;
+    else if (exifOrientation === 8) effectiveRotation = 270;
+  }
+
+  if (effectiveRotation) {
+    canvas = rotateCanvas(canvas, effectiveRotation);
   }
 
   // 3. Quality analysis
   const blurScore = calculateBlurScore(ctx, canvas.width, canvas.height);
   const brightness = calculateBrightness(ctx, canvas.width, canvas.height);
-  const is_blurry = blurScore < 25; // low variance means soft or blurry
+  const is_blurry = blurScore < 25;
   const is_dark = brightness < 60;
   const is_small = canvas.width < 400 || canvas.height < 400;
 
@@ -461,11 +579,20 @@ export async function preprocessReceiptImage(
     height: canvas.height,
   };
 
-  if (is_blurry) quality.message = 'Image might be blurry. Consider retaking for optimal line item accuracy.';
+  if (is_blurry) quality.message = 'Image might be blurry. Consider holding camera steady for faint thermal print.';
   else if (is_dark) quality.message = 'Low lighting detected. Adaptive illumination boost applied.';
 
-  // 4. Edge detection
-  const detectedCorners = options.customCorners || detectReceiptCorners(canvas, canvas.width, canvas.height);
+  // 4. Edge detection via OpenCV Web Worker
+  let detectedCorners: [Point, Point, Point, Point];
+  let edgeConfidence = 0.9;
+
+  if (options.customCorners) {
+    detectedCorners = options.customCorners;
+  } else {
+    const edgeRes = await detectEdgesWithWorker(canvas, canvas.width, canvas.height);
+    detectedCorners = edgeRes.corners;
+    edgeConfidence = edgeRes.confidence;
+  }
 
   // 5. Perspective Transform if requested
   let workingCanvas = canvas;
@@ -473,18 +600,16 @@ export async function preprocessReceiptImage(
     workingCanvas = applyPerspectiveTransform(canvas, detectedCorners);
   }
 
-  // 6. Lighting & contrast enhancement for faint thermal paper
+  // 6. Lighting & contrast enhancement
   const { applied: appliedEnhancements } = enhanceImageLighting(workingCanvas, brightness);
 
-  // 7. Compress to ~85% JPEG
-  const blob: Blob = await new Promise((resolve) => {
-    workingCanvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.85);
-  });
-
-  const processedDataUrl = workingCanvas.toDataURL('image/jpeg', 0.85);
+  // 7. Iterative compression ensuring payload <= 3.8MB base64
+  const { blob: processedBlob, base64: processedBase64, dataUrl: processedDataUrl } =
+    await compressToTargetPayloadLimit(workingCanvas, 3.8 * 1024 * 1024);
 
   return {
-    processedBlob: blob,
+    processedBlob,
+    processedBase64,
     processedDataUrl,
     originalDataUrl,
     width: workingCanvas.width,
@@ -492,5 +617,7 @@ export async function preprocessReceiptImage(
     detectedCorners,
     quality,
     appliedEnhancements,
+    edgeConfidence,
+    needsManualCropReview: edgeConfidence < 0.7,
   };
 }

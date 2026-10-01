@@ -16,17 +16,14 @@ export function parseLocalizedNumber(val: string | number | null | undefined): n
   const str = String(val).trim();
   if (!str) return 0;
 
-  // If format is 1.234,50 (comma decimal)
+  // If format is 1.234,50 (European comma decimal)
   if (str.includes(',') && str.includes('.')) {
     if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
-      // European format 1.234,50 -> 1234.50
       return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
     } else {
-      // Standard format 1,234.50 -> 1234.50
       return parseFloat(str.replace(/,/g, '')) || 0;
     }
   } else if (str.includes(',')) {
-    // Check if comma is used as decimal: e.g. "75,81" vs "1,000"
     const parts = str.split(',');
     if (parts.length === 2 && parts[1].length <= 3) {
       return parseFloat(parts[0] + '.' + parts[1]) || 0;
@@ -38,11 +35,10 @@ export function parseLocalizedNumber(val: string | number | null | undefined): n
 }
 
 /**
- * Validates receipt math:
- * 1. item.quantity * item.unit_price ≈ item.line_total (tolerance 0.02)
- * 2. sum(line_totals) - (discount_total or item_discounts) ≈ total
- * 3. checks whether struck_through items are included or excluded from total
- * 4. VAT math consistency
+ * Validates receipt math according to Requirement D:
+ * Check 1: quantity × unit_price ≈ line_total (tolerance 0.02)
+ * Check 2: sum(line_totals) ≈ total (tolerance 0.02), counting struck-through items too (discounts are informational and NOT subtracted!)
+ * Check 3: if VAT rows are present, pre-VAT + VAT ≈ total
  */
 export function validateReceipt(receipt: Partial<ReceiptData>): ValidationResult {
   const issues: string[] = [];
@@ -50,21 +46,17 @@ export function validateReceipt(receipt: Partial<ReceiptData>): ValidationResult
   const lowConfidenceFields: Record<string, boolean> = {};
 
   const items = receipt.items || [];
-  const activeItems = items.filter(it => !it.is_ignored);
-
-  let calculatedItemsTotal = 0;
-  let struckThroughTotal = 0;
-  let activeItemsWithoutStruckTotal = 0;
-  let calculatedDiscounts = 0;
+  let calculatedLineSum = 0;
+  let hasStruckItems = false;
 
   items.forEach((item) => {
     const itemErrors: string[] = [];
     const expectedLineTotal = item.quantity * item.unit_price;
     const diff = Math.abs(expectedLineTotal - item.line_total);
 
-    // Tolerance of 0.02 to handle standard rounding
+    // Check 1: tolerance 0.02 (e.g. 0.190 * 399.00 = 75.81)
     if (item.quantity > 0 && item.unit_price > 0 && diff > 0.02) {
-      const err = `Line total mismatch: ${item.quantity} × ${item.unit_price} = ${expectedLineTotal.toFixed(2)}, but printed is ${item.line_total.toFixed(2)}`;
+      const err = `Line total mismatch: ${item.quantity} × ${item.unit_price} = ${expectedLineTotal.toFixed(2)}, printed line total is ${item.line_total.toFixed(2)}`;
       itemErrors.push(err);
       issues.push(`Item "${item.name}": ${err}`);
     }
@@ -73,17 +65,13 @@ export function validateReceipt(receipt: Partial<ReceiptData>): ValidationResult
       lowConfidenceFields[`${item.id}.confidence`] = true;
     }
 
-    if (item.discount) {
-      calculatedDiscounts += item.discount;
+    if (item.struck_through) {
+      hasStruckItems = true;
     }
 
     if (!item.is_ignored) {
-      calculatedItemsTotal += item.line_total;
-      if (item.struck_through) {
-        struckThroughTotal += item.line_total;
-      } else {
-        activeItemsWithoutStruckTotal += item.line_total;
-      }
+      // Struck-through items are still included in line total sum
+      calculatedLineSum += item.line_total;
     }
 
     if (itemErrors.length > 0) {
@@ -92,42 +80,35 @@ export function validateReceipt(receipt: Partial<ReceiptData>): ValidationResult
   });
 
   const receiptTotal = receipt.total ?? 0;
-  const discountTotal = receipt.discount_total || calculatedDiscounts || 0;
-  const expectedTotalWithAll = calculatedItemsTotal - discountTotal;
-  const expectedTotalWithoutStruck = activeItemsWithoutStruckTotal - discountTotal;
 
-  // Total check
-  if (receiptTotal > 0 && activeItems.length > 0) {
-    const diffWithAll = Math.abs(expectedTotalWithAll - receiptTotal);
-    const diffWithoutStruck = Math.abs(expectedTotalWithoutStruck - receiptTotal);
+  // Check 2: sum(line_totals) ≈ total (tolerance 0.02) - discounts are NOT subtracted
+  if (receiptTotal > 0 && items.length > 0) {
+    const diffTotal = Math.abs(calculatedLineSum - receiptTotal);
 
-    if (diffWithAll <= 0.05) {
-      // Matches with all items included
-      if (struckThroughTotal > 0) {
-        issues.push(`Note: Struck-through item(s) (${struckThroughTotal.toFixed(2)}) ARE included in the printed total (${receiptTotal.toFixed(2)}).`);
-      }
-    } else if (diffWithoutStruck <= 0.05 && struckThroughTotal > 0) {
-      // Matches without struck-through items
-      issues.push(`Note: Struck-through item(s) (${struckThroughTotal.toFixed(2)}) ARE EXCLUDED from the printed total (${receiptTotal.toFixed(2)}).`);
-    } else if (diffWithAll > 0.05) {
+    if (diffTotal > 0.02) {
       issues.push(
-        `Total mismatch: Sum of active lines (${calculatedItemsTotal.toFixed(2)}) ${discountTotal > 0 ? `- discounts (${discountTotal.toFixed(2)})` : ''} = ${expectedTotalWithAll.toFixed(2)}, but printed total is ${receiptTotal.toFixed(2)} (diff: ${(expectedTotalWithAll - receiptTotal).toFixed(2)})`
+        `Total mismatch: Sum of line items (${calculatedLineSum.toFixed(2)}) != printed total (${receiptTotal.toFixed(2)}) (diff: ${(calculatedLineSum - receiptTotal).toFixed(2)}).`
       );
+    } else if (hasStruckItems) {
+      issues.push('Notice: Struck-through items are included in the printed register total.');
     }
   }
 
-  // Pre-VAT + VAT check if both present
+  // Check 3: VAT consistency
   if (receipt.subtotal_pre_vat && receipt.vat_total && receiptTotal > 0) {
     const expectedSum = receipt.subtotal_pre_vat + receipt.vat_total;
     if (Math.abs(expectedSum - receiptTotal) > 0.05) {
-      issues.push(`VAT sum mismatch: Pre-VAT (${receipt.subtotal_pre_vat.toFixed(2)}) + VAT (${receipt.vat_total.toFixed(2)}) = ${expectedSum.toFixed(2)}, expected ${receiptTotal.toFixed(2)}`);
+      issues.push(
+        `VAT check: Pre-VAT (${receipt.subtotal_pre_vat.toFixed(2)}) + VAT (${receipt.vat_total.toFixed(2)}) = ${expectedSum.toFixed(2)}, expected total ${receiptTotal.toFixed(2)}`
+      );
     }
   }
 
   let status: ValidationStatus = 'valid';
   if (issues.length > 0) {
-    // If it's just notes about strike-throughs or minor difference, set warning
-    const hasFatal = issues.some(i => i.startsWith('Line total mismatch') || i.startsWith('Total mismatch'));
+    const hasFatal = issues.some(
+      (i) => i.includes('Line total mismatch') || i.includes('Total mismatch')
+    );
     status = hasFatal ? 'error' : 'warning';
   }
 

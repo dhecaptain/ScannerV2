@@ -1,10 +1,11 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { ReceiptData } from '../types/receipt';
 
 export interface ExportColumn {
   key: string;
   label: string;
   defaultIncluded: boolean;
+  isSensitive?: boolean; // Payment hashes, transaction IDs, phone numbers
 }
 
 export const ALL_ITEM_COLUMNS: ExportColumn[] = [
@@ -17,26 +18,39 @@ export const ALL_ITEM_COLUMNS: ExportColumn[] = [
   { key: 'unit', label: 'Unit', defaultIncluded: true },
   { key: 'unit_price', label: 'Unit Price', defaultIncluded: true },
   { key: 'line_total', label: 'Line Total', defaultIncluded: true },
-  { key: 'discount', label: 'Discount', defaultIncluded: true },
+  { key: 'discount', label: 'Rewarded Discount', defaultIncluded: true },
   { key: 'vat_code', label: 'VAT Code', defaultIncluded: true },
   { key: 'struck_through', label: 'Struck Through', defaultIncluded: false },
   { key: 'currency', label: 'Currency', defaultIncluded: true },
   { key: 'cashier', label: 'Cashier', defaultIncluded: false },
   { key: 'customer_name', label: 'Customer', defaultIncluded: false },
+  { key: 'payment_method', label: 'Payment Method', defaultIncluded: false },
+  { key: 'transaction_id', label: 'M-Pesa / Trn ID', defaultIncluded: false, isSensitive: true },
 ];
 
 /**
  * Builds item rows across one or multiple receipts
  */
-export function buildExportItemRows(receipts: ReceiptData[], columns: string[] = ALL_ITEM_COLUMNS.map(c => c.key)) {
+export function buildExportItemRows(
+  receipts: ReceiptData[],
+  columns: string[] = ALL_ITEM_COLUMNS.filter(c => c.defaultIncluded).map(c => c.key),
+  includeSensitivePaymentInfo = false
+) {
   const rows: Record<string, any>[] = [];
+
+  // Filter out sensitive fields unless explicitly opted in
+  const safeColumns = columns.filter((col) => {
+    const colDef = ALL_ITEM_COLUMNS.find((c) => c.key === col);
+    if (colDef?.isSensitive && !includeSensitivePaymentInfo) return false;
+    return true;
+  });
 
   receipts.forEach((r) => {
     r.items.forEach((item) => {
       if (item.is_ignored) return;
 
       const row: Record<string, any> = {};
-      columns.forEach((col) => {
+      safeColumns.forEach((col) => {
         switch (col) {
           case 'receipt_number':
             row[col] = r.receipt_number || 'N/A';
@@ -83,8 +97,13 @@ export function buildExportItemRows(receipts: ReceiptData[], columns: string[] =
           case 'customer_name':
             row[col] = r.customer_name || '';
             break;
+          case 'payment_method':
+            row[col] = r.payment_method || '';
+            break;
+          case 'transaction_id':
+            row[col] = includeSensitivePaymentInfo ? (r.custom_fields?.['M-Pesa Trn ID'] || '') : '';
+            break;
           default:
-            // Custom fields
             row[col] = item.custom_fields?.[col] ?? r.custom_fields?.[col] ?? '';
         }
       });
@@ -92,106 +111,180 @@ export function buildExportItemRows(receipts: ReceiptData[], columns: string[] =
     });
   });
 
-  return rows;
+  return { rows, columns: safeColumns };
 }
 
 /**
- * Generates an Excel workbook with Sheet 1: Items and Sheet 2: Receipts
+ * Requirement E: Generates professional styled Excel workbook using exceljs
+ * - Bold frozen header row
+ * - Auto-fit column widths
+ * - Currency formatting (#,##0.00)
+ * - SUM formula in totals row
+ * - Sheet 1 "Items", Sheet 2 "Receipts"
  */
-export function exportToExcel(
+export async function exportToExcel(
   receipts: ReceiptData[],
-  selectedColumnKeys: string[] = ALL_ITEM_COLUMNS.map(c => c.key),
-  filename = 'receiptlens_export.xlsx'
-) {
-  const wb = XLSX.utils.book_new();
+  selectedColumnKeys: string[] = ALL_ITEM_COLUMNS.filter(c => c.defaultIncluded).map(c => c.key),
+  filename = 'receiptlens_export.xlsx',
+  includeSensitive = false
+): Promise<void> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'ReceiptLens';
+  wb.created = new Date();
 
-  // 1. Sheet 1: Items
-  const itemRows = buildExportItemRows(receipts, selectedColumnKeys);
-  const itemsWs = XLSX.utils.json_to_sheet(itemRows);
+  const { rows, columns } = buildExportItemRows(receipts, selectedColumnKeys, includeSensitive);
 
-  // Add SUM Formula row to Line Total column if items exist
-  if (itemRows.length > 0) {
-    const totalRowIndex = itemRows.length + 2; // +1 for 0-index, +1 for header
-    const totalColIndex = selectedColumnKeys.indexOf('line_total');
-    if (totalColIndex !== -1) {
-      const colLetter = XLSX.utils.encode_col(totalColIndex);
-      const sumFormula = `SUM(${colLetter}2:${colLetter}${totalRowIndex - 1})`;
-      XLSX.utils.sheet_add_aoa(itemsWs, [['TOTAL:', { f: sumFormula }]], {
-        origin: { r: totalRowIndex - 1, c: Math.max(0, totalColIndex - 1) },
-      });
+  // 1. SHEET 1: ITEMS
+  const itemsSheet = wb.addWorksheet('Items', {
+    views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
+  });
+
+  // Headers
+  const itemHeaders = columns.map((colKey) => {
+    const found = ALL_ITEM_COLUMNS.find((c) => c.key === colKey);
+    return {
+      header: found ? found.label : colKey,
+      key: colKey,
+      width: 15,
+    };
+  });
+  itemsSheet.columns = itemHeaders;
+
+  // Header row styling
+  const headerRow = itemsSheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF059669' }, // Emerald-600
+  };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.height = 24;
+
+  // Add item rows
+  rows.forEach((r) => {
+    itemsSheet.addRow(r);
+  });
+
+  // Format currency and number columns
+  const numericKeys = ['quantity', 'unit_price', 'line_total', 'discount'];
+  columns.forEach((key, colIndex) => {
+    const colNumber = colIndex + 1;
+    if (numericKeys.includes(key)) {
+      itemsSheet.getColumn(colNumber).numFmt = key === 'quantity' ? '#,##0.000' : '#,##0.00';
+      itemsSheet.getColumn(colNumber).alignment = { horizontal: 'right' };
+    }
+  });
+
+  // Add SUM Formula row at the bottom
+  if (rows.length > 0) {
+    const totalRowIndex = rows.length + 2;
+    const totalsRow = itemsSheet.getRow(totalRowIndex);
+    totalsRow.font = { bold: true };
+
+    const lineTotalColIndex = columns.indexOf('line_total') + 1;
+    if (lineTotalColIndex > 0) {
+      const colLetter = itemsSheet.getColumn(lineTotalColIndex).letter;
+      const cell = totalsRow.getCell(lineTotalColIndex);
+      cell.value = {
+        formula: `SUM(${colLetter}2:${colLetter}${totalRowIndex - 1})`,
+      };
+      cell.numFmt = '#,##0.00';
+
+      const prevCell = totalsRow.getCell(lineTotalColIndex - 1);
+      prevCell.value = 'TOTAL:';
+      prevCell.alignment = { horizontal: 'right' };
     }
   }
 
   // Auto-fit column widths
-  const itemColWidths = selectedColumnKeys.map((k) => {
-    const maxLen = Math.max(
-      k.length,
-      ...itemRows.map((r) => String(r[k] || '').length)
-    );
-    return { wch: Math.min(45, Math.max(10, maxLen + 3)) };
+  itemsSheet.columns.forEach((col) => {
+    let maxLen = col.header ? String(col.header).length : 12;
+    col.eachCell?.({ includeEmpty: false }, (cell) => {
+      const valStr = cell.value ? String(cell.value) : '';
+      if (valStr.length > maxLen) maxLen = valStr.length;
+    });
+    col.width = Math.min(45, Math.max(12, maxLen + 3));
   });
-  itemsWs['!cols'] = itemColWidths;
 
-  XLSX.utils.book_append_sheet(wb, itemsWs, 'Items');
+  // 2. SHEET 2: RECEIPTS SUMMARY
+  const receiptsSheet = wb.addWorksheet('Receipts', {
+    views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
+  });
 
-  // 2. Sheet 2: Receipts Summary
-  const receiptSummaryRows = receipts.map((r) => ({
-    'Receipt #': r.receipt_number || 'N/A',
-    'Date': r.date || 'N/A',
-    'Merchant': r.merchant,
-    'Branch': r.branch || '',
-    'Customer': r.customer_name || '',
-    'Cashier': r.cashier || '',
-    'Payment Method': r.payment_method || '',
-    'Items Count': r.items.filter(i => !i.is_ignored).length,
-    'Currency': r.currency,
-    'Pre-VAT Subtotal': r.subtotal_pre_vat ?? '',
-    'VAT Total': r.vat_total ?? '',
-    'Discount Total': r.discount_total ?? 0,
-    'Grand Total': r.total,
-    'Validation Status': r.validation_status.toUpperCase(),
-    'Extraction Engine': r.engine === 'gemini' ? 'Gemini AI' : 'Tesseract (Basic)',
-  }));
-
-  const receiptsWs = XLSX.utils.json_to_sheet(receiptSummaryRows);
-
-  // Auto-fit receipts sheet
-  receiptsWs['!cols'] = [
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 25 },
-    { wch: 20 },
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 16 },
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 16 },
-    { wch: 12 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 18 },
-    { wch: 18 },
+  const receiptHeaders = [
+    { header: 'Receipt #', key: 'receipt_number', width: 14 },
+    { header: 'Date', key: 'date', width: 14 },
+    { header: 'Merchant', key: 'merchant', width: 25 },
+    { header: 'Branch', key: 'branch', width: 22 },
+    { header: 'Customer', key: 'customer', width: 18 },
+    { header: 'Cashier', key: 'cashier', width: 18 },
+    { header: 'Payment Method', key: 'payment_method', width: 16 },
+    { header: 'Items Count', key: 'items_count', width: 12 },
+    { header: 'Currency', key: 'currency', width: 10 },
+    { header: 'Pre-VAT Subtotal', key: 'subtotal_pre_vat', width: 16 },
+    { header: 'VAT Total', key: 'vat_total', width: 14 },
+    { header: 'Grand Total', key: 'total', width: 16 },
+    { header: 'Validation Status', key: 'status', width: 18 },
   ];
+  receiptsSheet.columns = receiptHeaders;
 
-  XLSX.utils.book_append_sheet(wb, receiptsWs, 'Receipts');
+  const rHeaderRow = receiptsSheet.getRow(1);
+  rHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  rHeaderRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF0F172A' }, // Slate-900
+  };
+  rHeaderRow.height = 24;
 
-  // Write and download
-  XLSX.writeFile(wb, filename);
+  receipts.forEach((r) => {
+    receiptsSheet.addRow({
+      receipt_number: r.receipt_number || 'N/A',
+      date: r.date || 'N/A',
+      merchant: r.merchant,
+      branch: r.branch || '',
+      customer: r.customer_name || '',
+      cashier: r.cashier || '',
+      payment_method: r.payment_method || '',
+      items_count: r.items.filter((i) => !i.is_ignored).length,
+      currency: r.currency || 'KES',
+      subtotal_pre_vat: r.subtotal_pre_vat ?? '',
+      vat_total: r.vat_total ?? '',
+      total: r.total,
+      status: r.validation_status.toUpperCase(),
+    });
+  });
+
+  ['subtotal_pre_vat', 'vat_total', 'total'].forEach((key) => {
+    const colIndex = receiptHeaders.findIndex((h) => h.key === key) + 1;
+    if (colIndex > 0) {
+      receiptsSheet.getColumn(colIndex).numFmt = '#,##0.00';
+      receiptsSheet.getColumn(colIndex).alignment = { horizontal: 'right' };
+    }
+  });
+
+  // Write buffer and trigger browser download
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  triggerFileDownload(blob, filename);
 }
 
 /**
- * Generates UTF-8 CSV with Byte Order Mark (\uFEFF) for Excel compatibility
+ * Requirement E: Generates UTF-8 CSV with Byte Order Mark (\uFEFF)
  */
 export function exportToCSV(
   receipts: ReceiptData[],
-  selectedColumnKeys: string[] = ALL_ITEM_COLUMNS.map(c => c.key),
-  filename = 'receiptlens_export.csv'
+  selectedColumnKeys: string[] = ALL_ITEM_COLUMNS.filter(c => c.defaultIncluded).map(c => c.key),
+  filename = 'receiptlens_export.csv',
+  includeSensitive = false
 ) {
-  const rows = buildExportItemRows(receipts, selectedColumnKeys);
+  const { rows, columns } = buildExportItemRows(receipts, selectedColumnKeys, includeSensitive);
   if (rows.length === 0) return;
 
-  const headers = selectedColumnKeys.map((k) => {
+  const headers = columns.map((k) => {
     const found = ALL_ITEM_COLUMNS.find((c) => c.key === k);
     return found ? found.label : k;
   });
@@ -200,22 +293,16 @@ export function exportToCSV(
   csvLines.push(headers.map(escapeCSVField).join(','));
 
   rows.forEach((row) => {
-    const line = selectedColumnKeys.map((col) => escapeCSVField(row[col])).join(',');
+    const line = columns.map((col) => escapeCSVField(row[col])).join(',');
     csvLines.push(line);
   });
 
   // UTF-8 BOM (\uFEFF)
   const bom = '\uFEFF';
-  const csvBlob = new Blob([bom + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(csvBlob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const csvBlob = new Blob([bom + csvLines.join('\r\n')], {
+    type: 'text/csv;charset=utf-8;',
+  });
+  triggerFileDownload(csvBlob, filename);
 }
 
 /**
@@ -223,10 +310,11 @@ export function exportToCSV(
  */
 export async function copyToClipboardTSV(
   receipts: ReceiptData[],
-  selectedColumnKeys: string[] = ALL_ITEM_COLUMNS.map(c => c.key)
+  selectedColumnKeys: string[] = ALL_ITEM_COLUMNS.filter(c => c.defaultIncluded).map(c => c.key),
+  includeSensitive = false
 ): Promise<void> {
-  const rows = buildExportItemRows(receipts, selectedColumnKeys);
-  const headers = selectedColumnKeys.map((k) => {
+  const { rows, columns } = buildExportItemRows(receipts, selectedColumnKeys, includeSensitive);
+  const headers = columns.map((k) => {
     const found = ALL_ITEM_COLUMNS.find((c) => c.key === k);
     return found ? found.label : k;
   });
@@ -235,10 +323,12 @@ export async function copyToClipboardTSV(
   lines.push(headers.join('\t'));
 
   rows.forEach((row) => {
-    const line = selectedColumnKeys.map((col) => {
-      const val = row[col];
-      return val === null || val === undefined ? '' : String(val).replace(/\t|\r|\n/g, ' ');
-    }).join('\t');
+    const line = columns
+      .map((col) => {
+        const val = row[col];
+        return val === null || val === undefined ? '' : String(val).replace(/\t|\r|\n/g, ' ');
+      })
+      .join('\t');
     lines.push(line);
   });
 
@@ -253,4 +343,15 @@ function escapeCSVField(field: any): string {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return `"${str}"`;
+}
+
+function triggerFileDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

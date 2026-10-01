@@ -30,7 +30,8 @@ import {
   Camera,
   UploadCloud,
   FileSpreadsheet,
-  Receipt as ReceiptIcon
+  Receipt as ReceiptIcon,
+  Zap,
 } from 'lucide-react';
 import { useReceiptStore } from '../store/useReceiptStore';
 import { ReceiptItem } from '../types/receipt';
@@ -276,9 +277,16 @@ export const SplitViewWorkspace: React.FC = () => {
                     </>
                   )}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono">
-                  {receipt.engine === 'gemini' ? (receipt.model?.includes('pro') ? 'Gemini 2.5 Pro' : 'Gemini 2.5 Flash') : 'Tesseract.js (Basic Mode)'}
-                </span>
+                {receipt.engine === 'tesseract' ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-1 shadow-sm">
+                    <Zap className="w-3 h-3" />
+                    <span>Basic mode</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono">
+                    {receipt.model?.includes('pro') ? 'Gemini 2.5 Pro' : 'Gemini 2.5 Flash'}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {receipt.branch || 'Main Branch'} {receipt.date ? `• ${receipt.date}` : ''} {receipt.receipt_number ? `• Rct #${receipt.receipt_number}` : ''}
@@ -295,6 +303,20 @@ export const SplitViewWorkspace: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Quality checks warning banner if blurry, dark, or small */}
+        {receipt.quality_check && (receipt.quality_check.is_blurry || receipt.quality_check.is_dark || receipt.quality_check.is_small) && (
+          <div className="mt-3 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Photo Quality Warning: </strong>
+              {receipt.quality_check.is_blurry && 'Blur detected (low sharpness score). '}
+              {receipt.quality_check.is_dark && 'Low illumination detected. '}
+              {receipt.quality_check.is_small && 'Dimensions under 400px. '}
+              {receipt.quality_check.message || 'Consider retaking photo with better lighting or holding the camera steady.'}
+            </span>
+          </div>
+        )}
 
         {/* Validation warnings banner if discrepancies */}
         {receipt.validation_issues && receipt.validation_issues.length > 0 && (
