@@ -67,14 +67,14 @@ export const UploadSection: React.FC = () => {
   ];
 
   return (
-    <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 transition-colors">
-      <div className="max-w-7xl mx-auto space-y-4">
+    <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-3 sm:p-4 transition-colors">
+      <div className="max-w-7xl mx-auto space-y-3 sm:space-y-4">
         {/* Top bar: Upload zone + camera triggers */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-3 items-center">
           {/* Drag & Drop Area */}
           <div
             {...getRootProps()}
-            className={`md:col-span-8 border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col sm:flex-row items-center justify-between gap-4 ${
+            className={`md:col-span-8 border-2 border-dashed rounded-2xl p-3 sm:p-4 text-center cursor-pointer transition-all flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 ${
               isDragActive
                 ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 scale-[1.01]'
                 : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500/70 hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -82,23 +82,23 @@ export const UploadSection: React.FC = () => {
           >
             <input {...getInputProps()} />
             <div className="flex items-center gap-3 text-left">
-              <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                <UploadCloud className="w-6 h-6" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <UploadCloud className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100">
                   {isDragActive ? 'Drop images here...' : 'Upload receipt & document photos'}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Multiple files supported: JPG, PNG, WEBP, HEIC, PDF. Concurrency queue auto-processes up to 3 at once.
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                  Multiple files: JPG, PNG, WEBP, HEIC, PDF. Concurrency queue processes 3 at once.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
               <button
                 type="button"
-                className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-semibold shadow-sm transition-all"
+                className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-semibold shadow-sm transition-all"
               >
                 Browse Files
               </button>
@@ -177,7 +177,7 @@ export const UploadSection: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+            <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin snap-x snap-mandatory">
               {receipts.map((rec) => {
                 const isSelected = rec.id === selectedReceiptId;
                 const totalItems = rec.items.filter(i => !i.is_ignored).length;
@@ -186,7 +186,7 @@ export const UploadSection: React.FC = () => {
                   <div
                     key={rec.id}
                     onClick={() => setSelectedReceiptId(rec.id)}
-                    className={`relative group shrink-0 w-44 rounded-xl border p-2 cursor-pointer transition-all ${
+                    className={`relative group shrink-0 w-38 sm:w-44 rounded-xl border p-2 cursor-pointer transition-all snap-start ${
                       isSelected
                         ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/20 dark:bg-emerald-950/20'
                         : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300'

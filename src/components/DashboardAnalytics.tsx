@@ -104,67 +104,67 @@ export const DashboardAnalytics: React.FC = () => {
   const barColors = ['#10b981', '#059669', '#0d9488', '#0284c7', '#6366f1', '#8b5cf6'];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
       {/* Title */}
       <div>
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+        <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-emerald-600" />
           <span>ReceiptLens Analytics Dashboard</span>
         </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
+        <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
           Financial summary, tax breakdown, and itemization charts across scanned receipts
         </p>
       </div>
 
-      {/* 4 Key Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 4 Key Metric Cards (2x2 on mobile, 4 in a row on desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Total Spend */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
-            <TrendingUp className="w-6 h-6" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-xs flex items-center gap-2.5 sm:gap-4">
+          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
+            <TrendingUp className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Total Spent</span>
-            <span className="text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
+          <div className="min-w-0">
+            <span className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider block font-semibold truncate">Total Spent</span>
+            <span className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums truncate block">
               {metrics.currency} {metrics.grandTotal.toFixed(2)}
             </span>
           </div>
         </div>
 
         {/* Scanned Receipts */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-sky-100 dark:bg-sky-950/80 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold">
-            <Receipt className="w-6 h-6" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-xs flex items-center gap-2.5 sm:gap-4">
+          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-sky-100 dark:bg-sky-950/80 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold shrink-0">
+            <Receipt className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Receipts Scanned</span>
-            <span className="text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
+          <div className="min-w-0">
+            <span className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider block font-semibold truncate">Receipts</span>
+            <span className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums block">
               {metrics.receiptsCount}
             </span>
           </div>
         </div>
 
         {/* Total Line Items */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-            <ShoppingBag className="w-6 h-6" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-xs flex items-center gap-2.5 sm:gap-4">
+          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
+            <ShoppingBag className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Line Items Captured</span>
-            <span className="text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
+          <div className="min-w-0">
+            <span className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider block font-semibold truncate">Items</span>
+            <span className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums block">
               {metrics.itemsCount}
             </span>
           </div>
         </div>
 
         {/* Discounts Captured */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-            <Percent className="w-6 h-6" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-xs flex items-center gap-2.5 sm:gap-4">
+          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
+            <Percent className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Rewarded Discounts</span>
-            <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 font-mono tabular-nums">
+          <div className="min-w-0">
+            <span className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider block font-semibold truncate">Discounts</span>
+            <span className="text-sm sm:text-xl font-extrabold text-amber-600 dark:text-amber-400 font-mono tabular-nums truncate block">
               {metrics.currency} {metrics.discountTotal.toFixed(2)}
             </span>
           </div>
@@ -172,23 +172,23 @@ export const DashboardAnalytics: React.FC = () => {
       </div>
 
       {/* Real Recharts Visualizations */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
         {/* Top Items Bar Chart */}
-        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-xs space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ShoppingBag className="w-4 h-4 text-emerald-600" />
               <span>Top Items by Total Spend</span>
             </h3>
-            <span className="text-[11px] text-slate-500 font-mono">{metrics.currency}</span>
+            <span className="text-[10px] sm:text-[11px] text-slate-500 font-mono">{metrics.currency}</span>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-60 sm:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={metrics.topItemsChartData} layout="vertical" margin={{ left: 10, right: 20, top: 10, bottom: 10 }}>
+              <BarChart data={metrics.topItemsChartData} layout="vertical" margin={{ left: -10, right: 10, top: 10, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={110} />
+                <XAxis type="number" tick={{ fontSize: 10 }} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={85} />
                 <Tooltip
                   formatter={(val: any) => [`${metrics.currency} ${val}`, 'Total Spend']}
                   labelFormatter={(_label, payload) => payload?.[0]?.payload?.fullName || _label}
@@ -205,21 +205,21 @@ export const DashboardAnalytics: React.FC = () => {
         </div>
 
         {/* Daily Spend Timeline Bar Chart */}
-        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-xs space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Calendar className="w-4 h-4 text-sky-600" />
               <span>Daily Spend Timeline</span>
             </h3>
-            <span className="text-[11px] text-slate-500 font-mono">{metrics.currency}</span>
+            <span className="text-[10px] sm:text-[11px] text-slate-500 font-mono">{metrics.currency}</span>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-60 sm:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={metrics.dailySpendChartData} margin={{ left: 0, right: 10, top: 10, bottom: 10 }}>
+              <BarChart data={metrics.dailySpendChartData} margin={{ left: -20, right: 10, top: 10, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip
                   formatter={(val: any) => [`${metrics.currency} ${val}`, 'Spend']}
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff', borderRadius: '12px', fontSize: '12px' }}

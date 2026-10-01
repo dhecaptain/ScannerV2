@@ -66,6 +66,7 @@ export const SplitViewWorkspace: React.FC = () => {
   const [rotation, setRotation] = useState<number>(0);
   const [isPanning, setIsPanning] = useState<boolean>(false);
   const [startPan, setStartPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [mobileView, setMobileView] = useState<'both' | 'photo' | 'table'>('table');
 
   // Custom fields & Ask AI drawer state
   const [isCustomFieldsOpen, setIsCustomFieldsOpen] = useState<boolean>(false);
@@ -343,10 +344,49 @@ export const SplitViewWorkspace: React.FC = () => {
         )}
       </div>
 
+      {/* Mobile View Switcher (Visible only on mobile/tablet screens < lg) */}
+      <div className="lg:hidden flex items-center justify-between bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl mb-4 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+        <button
+          onClick={() => setMobileView('table')}
+          className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+            mobileView === 'table'
+              ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          <ReceiptIcon className="w-3.5 h-3.5" />
+          <span>Items & Totals</span>
+        </button>
+
+        <button
+          onClick={() => setMobileView('photo')}
+          className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+            mobileView === 'photo'
+              ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          <Camera className="w-3.5 h-3.5" />
+          <span>Receipt Photo</span>
+        </button>
+
+        <button
+          onClick={() => setMobileView('both')}
+          className={`flex-1 py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+            mobileView === 'both'
+              ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Split Both</span>
+        </button>
+      </div>
+
       {/* Main Split View: 50% Image Viewer | 50% Editable Data Table */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* LEFT COLUMN: Zoomable & Pan Receipt Viewer */}
-        <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex flex-col h-[650px] relative">
+        <div className={`${mobileView === 'table' ? 'hidden lg:flex' : 'flex'} lg:col-span-5 bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-lg flex-col h-[360px] sm:h-[480px] lg:h-[650px] relative`}>
           {/* Viewer Toolbar */}
           <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/10 text-white text-xs">
             <span className="font-mono text-[11px] text-slate-300 truncate max-w-[140px]">
@@ -417,7 +457,7 @@ export const SplitViewWorkspace: React.FC = () => {
         </div>
 
         {/* RIGHT COLUMN: Editable Line Items Table & Metadata */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className={`${mobileView === 'photo' ? 'hidden lg:block' : 'block'} lg:col-span-7 space-y-4`}>
           {/* Metadata quick inputs (Cashier, Date, Customer, Payment) */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div>
@@ -465,17 +505,20 @@ export const SplitViewWorkspace: React.FC = () => {
           {/* Line Items Table */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
             <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                   Line Items ({receipt.items.length})
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  Yellow cells denote low-confidence OCR (review suggested)
+                  Yellow cells denote low confidence
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 sm:hidden">
+                  ↔ Swipe sideways to view prices & actions
                 </span>
               </div>
               <button
                 onClick={() => addItem(receipt.id)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Item</span>
@@ -483,8 +526,8 @@ export const SplitViewWorkspace: React.FC = () => {
             </div>
 
             {/* Scrollable Table */}
-            <div className="overflow-x-auto max-h-[380px] scrollbar-thin">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="overflow-x-auto max-h-[420px] scrollbar-thin">
+              <table className="w-full min-w-[620px] text-left text-xs border-collapse">
                 <thead className="bg-slate-100 dark:bg-slate-800 sticky top-0 z-10 text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
                   <tr>
                     <th className="py-2.5 px-3">Description</th>
