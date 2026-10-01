@@ -75,6 +75,22 @@ export const DashboardAnalytics: React.FC = () => {
   const maxDaySpend = Math.max(...Object.values(metrics.dailySpend), 1);
   const maxMerchantSpend = Math.max(...Object.values(metrics.merchantSpend), 1);
 
+  if (receipts.length === 0) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center">
+          <BarChart3 className="w-7 h-7" />
+        </div>
+        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+          No analytics data available
+        </h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+          Upload or capture receipts to automatically generate spending summaries, tax metrics, and item timelines.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Title */}

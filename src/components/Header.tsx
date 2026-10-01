@@ -12,7 +12,8 @@ import {
   RefreshCw,
   Layers,
   FlaskConical,
-  Zap
+  Zap,
+  Trash2
 } from 'lucide-react';
 import { useReceiptStore } from '../store/useReceiptStore';
 
@@ -29,6 +30,7 @@ export const Header: React.FC = () => {
     setTheme,
     setExportModalOpen,
     loadSampleReceipts,
+    clearAllReceipts,
     setSelfTestOpen,
   } = useReceiptStore();
 
@@ -146,15 +148,26 @@ export const Header: React.FC = () => {
               <span>{autoCrop ? 'Auto Crop' : 'Review Crop'}</span>
             </button>
 
-            {/* Load Samples */}
-            <button
-              onClick={loadSampleReceipts}
-              title="Load 5 quick receipt test cases (Quick Mart thermal receipts)"
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>5 Samples</span>
-            </button>
+            {/* Dynamic Clear All or Load Demo */}
+            {totalReceipts > 0 ? (
+              <button
+                onClick={clearAllReceipts}
+                title="Clear all documents from current session"
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear All</span>
+              </button>
+            ) : (
+              <button
+                onClick={loadSampleReceipts}
+                title="Load 5 demo receipt test cases to explore features"
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Try Demo</span>
+              </button>
+            )}
 
             {/* Unit Tests Button */}
             <button

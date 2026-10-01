@@ -59,6 +59,28 @@ export const AllItemsTable: React.FC = () => {
     .filter(r => !r.is_ignored)
     .reduce((sum, r) => sum + r.line_total, 0);
 
+  if (receipts.length === 0) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center">
+          <Layers className="w-7 h-7" />
+        </div>
+        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+          No line items to display yet
+        </h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+          Upload or photograph your receipts to automatically consolidate all line items, quantities, and prices here.
+        </p>
+        <button
+          onClick={() => setActiveTab('workspace')}
+          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors"
+        >
+          Go to Upload
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
       {/* Top Banner & Filters */}

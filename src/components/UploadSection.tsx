@@ -13,7 +13,8 @@ import {
   Sparkles,
   AlertCircle,
   FileCheck,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { useReceiptStore } from '../store/useReceiptStore';
 import { DocumentType } from '../types/receipt';
@@ -31,6 +32,7 @@ export const UploadSection: React.FC = () => {
     setDocumentType,
     setCameraOpen,
     loadSampleReceipts,
+    clearAllReceipts,
   } = useReceiptStore();
 
   const fileInputCameraRef = useRef<HTMLInputElement>(null);
@@ -160,9 +162,19 @@ export const UploadSection: React.FC = () => {
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-medium">
               <span className="flex items-center gap-1.5">
                 <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Uploaded Documents ({receipts.length})</span>
+                <span>Your Uploaded Documents ({receipts.length})</span>
               </span>
-              <span className="text-[11px]">Click a thumbnail to view and edit details</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] hidden sm:inline">Click a thumbnail to inspect & edit</span>
+                <button
+                  onClick={clearAllReceipts}
+                  className="flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 font-semibold px-2 py-0.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                  title="Clear all uploaded documents"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear All</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">

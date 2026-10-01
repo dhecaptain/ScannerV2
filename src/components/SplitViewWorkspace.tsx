@@ -26,7 +26,11 @@ import {
   Layers,
   ShieldCheck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Camera,
+  UploadCloud,
+  FileSpreadsheet,
+  Receipt as ReceiptIcon
 } from 'lucide-react';
 import { useReceiptStore } from '../store/useReceiptStore';
 import { ReceiptItem } from '../types/receipt';
@@ -45,7 +49,13 @@ export const SplitViewWorkspace: React.FC = () => {
     addCustomField,
     removeCustomField,
     askAboutDocument,
+    setCameraOpen,
+    addUploadedFiles,
+    loadSampleReceipts,
   } = useReceiptStore();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const receipt = receipts.find(r => r.id === selectedReceiptId) || receipts[0];
 
@@ -66,9 +76,109 @@ export const SplitViewWorkspace: React.FC = () => {
 
   if (!receipt) {
     return (
-      <div className="p-12 text-center text-slate-500">
-        <p className="text-base font-semibold">No receipts uploaded yet.</p>
-        <p className="text-xs">Drag and drop receipt photos above or click "5 Samples" to explore.</p>
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-8">
+        {/* Hidden inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              addUploadedFiles(Array.from(e.target.files));
+            }
+          }}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              addUploadedFiles(Array.from(e.target.files));
+            }
+          }}
+        />
+
+        {/* Hero Illustration & Heading */}
+        <div className="space-y-4">
+          <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xl shadow-emerald-500/10">
+            <ReceiptIcon className="w-10 h-10" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+              Scan Your Receipts & Documents
+            </h2>
+            <p className="max-w-xl mx-auto text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              Upload photos or PDFs of receipts, grocery slips, or invoices. Gemini AI extracts line items, prices, VAT, and discounts with high accuracy, ready for clean Excel or CSV export.
+            </p>
+          </div>
+        </div>
+
+        {/* Primary Action Buttons */}
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <UploadCloud className="w-5 h-5" />
+            <span>Upload Document</span>
+          </button>
+
+          <button
+            onClick={() => setCameraOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-sm shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Camera className="w-5 h-5 text-emerald-500" />
+            <span>Live Camera Scanner</span>
+          </button>
+        </div>
+
+        {/* Optional Demo Link */}
+        <div>
+          <button
+            onClick={loadSampleReceipts}
+            className="text-xs text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium underline underline-offset-4 transition-colors"
+          >
+            Need to test first? Load 5 Quick Mart sample receipts
+          </button>
+        </div>
+
+        {/* 3 Value Proposition Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left pt-6 border-t border-slate-200 dark:border-slate-800">
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 flex items-center justify-center font-bold">
+              <Check className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white">Precision Line Items</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              Extracts 2-line names, SKUs, and weighted decimal units (e.g. 0.190 KG @ 399.00).
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-sky-100 dark:bg-sky-950/80 text-sky-600 flex items-center justify-center font-bold">
+              <Check className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white">Math & Strike-Through Checks</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              Verifies quantity × price = line total, checks VAT consistency, and detects pen strike-throughs.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 flex items-center justify-center font-bold">
+              <FileSpreadsheet className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white">Professional Excel & CSV</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              Multi-sheet Excel with frozen header & SUM formulas, plus UTF-8 CSV with Excel BOM.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

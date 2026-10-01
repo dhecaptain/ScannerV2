@@ -312,8 +312,8 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
   };
 
   return {
-    receipts: SAMPLE_RECEIPTS,
-    selectedReceiptId: SAMPLE_RECEIPTS[0].id,
+    receipts: [],
+    selectedReceiptId: null,
     activeTab: 'workspace',
     isHighAccuracy: false,
     autoCrop: true,
