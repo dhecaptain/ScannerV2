@@ -1,0 +1,10 @@
+{
+  "name": "ReceiptLens",
+  "description": "Production-grade OCR tool for receipts and documents. Extracts line items, prices, and taxes with Gemini AI vision and exports to Excel/CSV.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
