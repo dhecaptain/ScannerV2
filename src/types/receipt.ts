@@ -10,6 +10,8 @@ export interface ReceiptItem {
   discount: number | null;
   struck_through: boolean;
   confidence: number; // 0 to 1
+  reason_low_confidence?: string;
+  tax_rate?: string | number | null;
   is_ignored?: boolean;
   notes?: string;
   custom_fields?: Record<string, string | number | boolean | null>;
@@ -52,6 +54,7 @@ export interface ReceiptData {
   customer_name: string | null;
   cashier: string | null;
   payment_method: string | null;
+  tax_id?: string | null;
 
   // Items
   items: ReceiptItem[];
@@ -68,6 +71,8 @@ export interface ReceiptData {
   warnings: string[];
   validation_status: ValidationStatus;
   validation_issues: string[];
+  confidence_score?: number;
+  math_verified?: boolean;
 
   // Custom user fields
   custom_fields?: Record<string, string | number | boolean | null>;

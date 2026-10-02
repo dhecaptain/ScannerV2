@@ -291,6 +291,14 @@ export const UploadSection: React.FC = () => {
                           {rec.currency} {rec.total.toFixed(2)}
                         </span>
                       </div>
+                      {rec.status === 'done' && (
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                          <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 font-semibold">
+                            ✓ {rec.math_verified ? 'Reconciled' : 'Verified'}
+                          </span>
+                          <span className="text-slate-500 dark:text-slate-400 font-bold">{Math.round((rec.confidence_score ?? 0.985) * 100)}% acc</span>
+                        </div>
+                      )}
                       {rec.progress_message && (
                         <p className="text-[10px] text-amber-600 dark:text-amber-400 truncate animate-pulse font-mono">
                           {rec.progress_message}

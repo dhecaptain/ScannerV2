@@ -72,6 +72,8 @@ interface ReceiptState {
   addItem: (receiptId: string) => void;
   deleteItem: (receiptId: string, itemId: string) => void;
   toggleIgnoreItem: (receiptId: string, itemId: string) => void;
+  approveReceipt: (receiptId: string) => void;
+  reconcileReceiptTotal: (receiptId: string) => void;
 
   // Custom Fields
   toggleCustomField: (fieldId: string) => void;
@@ -274,20 +276,39 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
     }
 
     // Assign IDs to items
-    const rawItems: ReceiptItem[] = (extractedData.items || []).map((it: any, idx: number) => ({
-      id: `item_${receiptId}_${idx}_${Date.now()}`,
-      name: it.name || `Item ${idx + 1}`,
-      item_code: it.item_code || null,
-      quantity: Number(it.quantity) || 1,
-      unit: it.unit || 'PC',
-      unit_price: Number(it.unit_price) || 0,
-      line_total: Number(it.line_total) || 0,
-      vat_code: it.vat_code || 'G',
-      discount: it.discount !== undefined && it.discount !== null ? Number(it.discount) : null,
-      struck_through: Boolean(it.struck_through),
-      confidence: it.confidence !== undefined ? Number(it.confidence) : 0.95,
-      is_ignored: false,
-    }));
+    const rawItems: ReceiptItem[] = (extractedData.items || []).map((it: any, idx: number) => {
+      let bounding_box: { x: number; y: number; width: number; height: number } | undefined = undefined;
+      if (Array.isArray(it.box_2d) && it.box_2d.length === 4) {
+        const ymin = Number(it.box_2d[0]) || 0;
+        const xmin = Number(it.box_2d[1]) || 0;
+        const ymax = Number(it.box_2d[2]) || ymin + 20;
+        const xmax = Number(it.box_2d[3]) || xmin + 80;
+        bounding_box = {
+          y: ymin / 10,
+          x: xmin / 10,
+          height: Math.max(1.8, (ymax - ymin) / 10),
+          width: Math.max(4.0, (xmax - xmin) / 10),
+        };
+      }
+
+      return {
+        id: `item_${receiptId}_${idx}_${Date.now()}`,
+        name: it.name || `Item ${idx + 1}`,
+        item_code: it.item_code || null,
+        quantity: Number(it.quantity) || 1,
+        unit: it.unit || 'PC',
+        unit_price: Number(it.unit_price) || 0,
+        line_total: Number(it.line_total) || 0,
+        vat_code: it.vat_code || 'G',
+        tax_rate: it.tax_rate ?? null,
+        discount: it.discount !== undefined && it.discount !== null ? Number(it.discount) : null,
+        struck_through: Boolean(it.struck_through),
+        confidence: it.confidence !== undefined ? Number(it.confidence) : 0.95,
+        reason_low_confidence: it.reason_low_confidence || undefined,
+        is_ignored: false,
+        bounding_box,
+      };
+    });
 
     // Math validation
     const tempReceipt: Partial<ReceiptData> = {
@@ -310,6 +331,7 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
           date: extractedData.date || null,
           time: extractedData.time || null,
           receipt_number: extractedData.receipt_number || null,
+          tax_id: extractedData.tax_id || null,
           currency: extractedData.currency || 'KES',
           customer_name: extractedData.customer_name || null,
           cashier: extractedData.cashier || null,
@@ -321,6 +343,8 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
           total: Number(extractedData.total) || 0,
           amount_paid: extractedData.amount_paid ?? null,
           change: extractedData.change ?? null,
+          confidence_score: extractedData.confidence_overall !== undefined ? Number(extractedData.confidence_overall) : 0.98,
+          math_verified: extractedData.math_verified ?? (validation.status === 'valid'),
           warnings: [
             ...(extractedData.warnings || []),
             ...(usedFallback ? ['Extracted using client-side Tesseract.js (Basic mode)'] : []),
@@ -604,6 +628,41 @@ export const useReceiptStore = create<ReceiptState>((set, get) => {
             it.id === itemId ? { ...it, is_ignored: !it.is_ignored } : it
           );
           const updatedReceipt = { ...r, items: nextItems };
+          const validation = validateReceipt(updatedReceipt);
+          return {
+            ...updatedReceipt,
+            validation_status: validation.status,
+            validation_issues: validation.issues,
+          };
+        }),
+      }));
+    },
+
+    approveReceipt: (receiptId: string) => {
+      set(state => ({
+        receipts: state.receipts.map(r => {
+          if (r.id !== receiptId) return r;
+          return {
+            ...r,
+            validation_status: 'valid',
+            status: 'done',
+            validation_issues: [],
+          };
+        }),
+      }));
+    },
+
+    reconcileReceiptTotal: (receiptId: string) => {
+      set(state => ({
+        receipts: state.receipts.map(r => {
+          if (r.id !== receiptId) return r;
+          const itemsSum = r.items
+            .filter(i => !i.is_ignored)
+            .reduce((sum, i) => sum + i.line_total, 0);
+          const updatedReceipt = {
+            ...r,
+            total: Math.max(0, parseFloat(itemsSum.toFixed(2))),
+          };
           const validation = validateReceipt(updatedReceipt);
           return {
             ...updatedReceipt,

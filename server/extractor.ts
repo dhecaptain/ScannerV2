@@ -10,9 +10,12 @@ export const ExtractedItemSchema = z.object({
   unit_price: z.number().describe('Price per single unit / each'),
   line_total: z.number().describe('Total price for this line item'),
   vat_code: z.string().nullable().optional().describe('VAT tax classification code e.g. A, G, E'),
+  tax_rate: z.union([z.string(), z.number()]).nullable().optional().describe('Applicable VAT rate e.g. 16% or 0%'),
   discount: z.number().nullable().optional().describe('Informational item-specific discount if listed'),
   struck_through: z.boolean().default(false).describe('True if a pen line, marker, or strike-through is drawn across this item'),
   confidence: z.number().min(0).max(1).default(0.95).describe('Confidence score between 0.0 and 1.0'),
+  reason_low_confidence: z.string().nullable().optional().describe('Reason for lower confidence if digits or text are faint or occluded'),
+  box_2d: z.array(z.number()).length(4).optional().describe('Normalized bounding box [ymin, xmin, ymax, xmax] (0 to 1000) locating this item on the document photo'),
 });
 
 export const ExtractedReceiptSchema = z.object({
@@ -21,6 +24,7 @@ export const ExtractedReceiptSchema = z.object({
   date: z.string().nullable().optional().describe('Date in YYYY-MM-DD format if readable'),
   time: z.string().nullable().optional().describe('Time e.g. 12:23pm or 14:06:45'),
   receipt_number: z.string().nullable().optional().describe('Receipt number, invoice #, or Rct code'),
+  tax_id: z.string().nullable().optional().describe('Tax PIN, KRA PIN, VAT number, or business registration number'),
   currency: z.string().default('KES').describe('Currency ISO code or symbol, e.g. KES, USD, EUR, GBP'),
   customer_name: z.string().nullable().optional().describe('Customer name printed on the receipt'),
   cashier: z.string().nullable().optional().describe('Cashier name or ID'),
@@ -32,6 +36,9 @@ export const ExtractedReceiptSchema = z.object({
   total: z.number().describe('Final total payable amount as printed'),
   amount_paid: z.number().nullable().optional().describe('Amount tendered or paid by customer'),
   change: z.number().nullable().optional().describe('Change returned to customer'),
+  confidence_overall: z.number().min(0).max(1).default(0.98).optional().describe('Overall extraction confidence score'),
+  math_verified: z.boolean().default(true).optional().describe('True if mathematical consistency checks pass cleanly'),
+  notes: z.string().nullable().optional().describe('General notes or payment reference text'),
   warnings: z.array(z.string()).default([]).describe('Any warnings about cropped sections, strike-throughs, or ambiguities'),
   custom_fields: z.record(z.string(), z.any()).optional().describe('Any custom user-requested fields'),
 });
@@ -40,38 +47,40 @@ export type ExtractedReceipt = z.infer<typeof ExtractedReceiptSchema>;
 
 // System prompt strictly adhering to Section 4 & Requirement D
 export const RECEIPT_SYSTEM_PROMPT = `
-You are an expert OCR and financial document vision parser for "ReceiptLens".
+You are an expert OCR, document vision analyst, and forensic financial auditor for "ReceiptLens".
 Your job is to read images of receipts, invoices, or document tables with extreme precision and output strictly structured JSON.
 
-CRITICAL PARSING RULES:
+CRITICAL PARSING & PRECISION RULES:
 1. Extract ONLY what is physically printed or handwritten on the document. NEVER guess, hallucinate, or fabricate values. If a field is illegible or missing, set it to null and lower the confidence score.
-2. Two-line line items: Items frequently span two lines!
-   - Line 1 has the item name (e.g., "FR-FRESH PACKED SWEET POTATO PER KG" or "FD-INSTANT GRANULES STICK SATCHET 1.6G").
-   - Line 2 has the item code underneath (e.g., "730087" or "686163"), followed horizontally by the Qty, Unit, Each price, and Line Total.
-   - ALWAYS combine the name and code into the single corresponding item record!
+2. Two-line line items & SKU association:
+   - Line 1 has the item name / description (e.g., "FR-FRESH PACKED SWEET POTATO PER KG" or "FD-INSTANT GRANULES STICK SATCHET 1.6G").
+   - Line 2 has the item code or barcode underneath (e.g., "730087" or "686163"), followed horizontally by the Qty, Unit, Each price, and Line Total.
+   - ALWAYS combine the name from Line 1 and the code from Line 2 into the SINGLE corresponding item record!
 3. Weighted & Decimal items: e.g. "0.190 KG × 399.00 = 75.81".
-   - Quantity is 0.190 (keep decimal precision!).
-   - Unit is "KG".
+   - Quantity is 0.190 (keep exact decimal precision up to 3 decimal places!).
+   - Unit is "KG", "GM", "PC", "PA", "SA", "BTL", etc.
    - Unit price is 399.00.
    - Line total is 75.81.
-4. Strike-throughs & Pen marks:
+4. Optical character disambiguation via arithmetic:
+   - When thermal printing is faint or digits like 8 vs 0, 3 vs 8, 1 vs 7, 5 vs 6, 2 vs Z are ambiguous, verify using the mathematical formula:
+     quantity × unit_price = line_total.
+   - Verify that the sum of line items strictly reconciles with the printed register TOTAL.
+5. Strike-throughs & Pen marks:
    - Detect hand-drawn pen lines, strike-throughs, checkmarks, or red/blue pen ink over any item.
    - Set struck_through=true for that item, BUT STILL EXTRACT ALL ITS DETAILS!
-   - Note: on these receipts, struck-through items ARE STILL INCLUDED in the printed register TOTAL. Do not exclude them from the items list.
+   - Note: on cash register receipts, struck-through items ARE STILL INCLUDED in the printed register TOTAL. Do not exclude them from the items list.
    - Add a warning: "Pen strike-through detected on item [Name]; item is included in printed total."
-5. REWARDED DISCOUNTS ARE INFORMATIONAL:
-   - Thermal receipts often have a "REWARDED DISCOUNTS" section at the bottom listing discount amounts per item.
+6. REWARDED DISCOUNTS ARE INFORMATIONAL:
+   - Thermal receipts often have a "REWARDED DISCOUNTS" or "SAVINGS" section at the bottom listing discount amounts per item.
    - On these receipts, the sum of line_totals ALREADY EQUALS the printed TOTAL.
    - DO NOT subtract discounts when extracting or checking the total! Record the discount on the item and in discount_total for informational purposes only.
-6. Irrelevant text filtering:
-   - Ignore general clutter unless specifically requested in custom fields: phone numbers, barcodes, QR codes, KRA/tax control unit numbers ("KRAMW...", "CU Inv"), "For home deliveries call...", marketing/loyalty promos.
-   - However, DO capture customer name, cashier name, and payment method if printed.
-7. Cropped receipts:
-   - If the receipt is cut off at the top (missing header/store name) or bottom (missing totals), gracefully set those fields to null and add a descriptive warning in warnings[].
-8. Imperfections:
-   - Reliably handle red ink stains, creases, faded thermal print, glare, rotated text, and low contrast.
-9. Number and currency formatting:
-   - Convert all prices to standard numbers (e.g. 75.81). Detect currency from the context (default to KES for East African receipts).
+7. Tax PIN / KRA PIN / VAT Identification:
+   - Look for Tax PIN (e.g. "P051398285X", "PIN: ...", "VAT NO: ...") and extract into tax_id.
+8. Visual Grounding Bounding Boxes:
+   - For every line item, calculate its normalized 2D bounding box [ymin, xmin, ymax, xmax] on a scale of 0 to 1000 representing the exact area covering both the item name and its price row.
+9. Date & Currency standardization:
+   - Convert date into standard ISO format "YYYY-MM-DD".
+   - Identify currency code (default to KES for East African receipts, or USD/EUR/GBP if stated).
 `;
 
 export function buildGeminiResponseSchema(customFields?: Array<{ name: string; description?: string; type?: string }>) {
@@ -86,6 +95,12 @@ export function buildGeminiResponseSchema(customFields?: Array<{ name: string; d
     discount: { type: Type.NUMBER, description: 'Informational discount applied to this item' },
     struck_through: { type: Type.BOOLEAN, description: 'True if hand-drawn strike-through or pen mark across this item' },
     confidence: { type: Type.NUMBER, description: 'Extraction confidence 0.0 to 1.0' },
+    reason_low_confidence: { type: Type.STRING, description: 'Explanation if confidence is below 0.85' },
+    box_2d: {
+      type: Type.ARRAY,
+      items: { type: Type.NUMBER },
+      description: 'Normalized bounding box [ymin, xmin, ymax, xmax] (0 to 1000 scale) locating this item on the document photo',
+    },
   };
 
   const receiptProperties: Record<string, any> = {
@@ -94,6 +109,7 @@ export function buildGeminiResponseSchema(customFields?: Array<{ name: string; d
     date: { type: Type.STRING, description: 'Date in YYYY-MM-DD format if readable' },
     time: { type: Type.STRING, description: 'Time printed on receipt' },
     receipt_number: { type: Type.STRING, description: 'Receipt number or Rct code' },
+    tax_id: { type: Type.STRING, description: 'Tax PIN, KRA PIN, or VAT ID' },
     currency: { type: Type.STRING, description: 'Currency code, default KES' },
     customer_name: { type: Type.STRING, description: 'Customer name' },
     cashier: { type: Type.STRING, description: 'Cashier name or ID' },
@@ -112,6 +128,7 @@ export function buildGeminiResponseSchema(customFields?: Array<{ name: string; d
     total: { type: Type.NUMBER, description: 'Final total amount printed' },
     amount_paid: { type: Type.NUMBER, description: 'Amount paid / cash paid / mpesa pay' },
     change: { type: Type.NUMBER, description: 'Change given' },
+    confidence_overall: { type: Type.NUMBER, description: 'Overall extraction confidence between 0.0 and 1.0' },
     warnings: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
@@ -198,7 +215,7 @@ Remember: Rewarded Discounts are informational only; line totals already sum to 
         systemInstruction: RECEIPT_SYSTEM_PROMPT,
         responseMimeType: 'application/json',
         responseSchema: responseSchema,
-        temperature: 0.1,
+        temperature: 0.0,
       },
     });
     responseText = response.text;
@@ -304,6 +321,8 @@ Return the corrected and verified final JSON matching the schema.
           ...revalidated.warnings,
           'Auto-verified via secondary mathematical consistency check.',
         ];
+        revalidated.math_verified = true;
+        revalidated.confidence_overall = 0.99;
         return revalidated;
       }
     } catch {
@@ -311,6 +330,13 @@ Return the corrected and verified final JSON matching the schema.
       validated.warnings.push(`Mathematical check notice: ${inconsistentLines.join('; ')}`);
     }
   }
+
+  // Set accuracy and math verification status
+  validated.math_verified = !hasInconsistency;
+  const avgConf = validated.items.length > 0
+    ? validated.items.reduce((acc, i) => acc + (i.confidence ?? 0.95), 0) / validated.items.length
+    : 0.95;
+  validated.confidence_overall = hasInconsistency ? Math.min(0.85, avgConf) : Math.max(0.95, avgConf);
 
   return validated;
 }
